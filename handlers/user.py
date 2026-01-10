@@ -1,0 +1,329 @@
+import asyncio
+import logging
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+
+from config import ADMIN_ID, PHOTOS_MIN, PHOTOS_MAX, AI_CONFIDENCE_THRESHOLD
+from states import UserStates
+from keyboards import admin_answer_keyboard
+from database import (
+    get_user, create_user, update_user_status, save_message,
+    save_photo, get_setting, save_ai_learning, save_pending_question
+)
+from utils.ai_handler import get_ai_response_with_retry
+from handlers.reviews import is_review_request, send_reviews
+
+router = Router()
+logger = logging.getLogger(__name__)
+
+photo_group_cache = {}
+
+async def is_user_rejected(user_id):
+    user = await get_user(user_id)
+    return user and user['status'] == 'rejected'
+
+@router.message(Command("start"))
+async def cmd_start(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        logger.info(f"Admin {user_id} tried to use /start, redirecting to /admin")
+        from keyboards import admin_main_menu
+        await message.answer("👋 Привет, администратор!\n\nИспользуй команду /admin для доступа к панели управления", reply_markup=admin_main_menu())
+        return
+    
+    username = message.from_user.username or f"user_{user_id}"
+    
+    user = await get_user(user_id)
+    
+    if user and user['status'] == 'rejected':
+        logger.info(f"Rejected user {user_id} tried to start bot")
+        return
+    
+    if not user:
+        await create_user(user_id, username)
+        await update_user_status(user_id, 'chatting')
+        
+        welcome_msg = await get_setting('welcome_message')
+        await message.answer(welcome_msg)
+        await state.set_state(UserStates.chatting)
+        logger.info(f"New user {user_id} (@{username}) started bot")
+    else:
+        await message.answer("С возвращением! Чем могу помочь? 😊")
+        await state.set_state(UserStates.chatting)
+
+@router.message(UserStates.chatting, F.photo)
+async def handle_photo_in_chatting(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    user = await get_user(user_id)
+    photos_count = user['photos_count']
+    
+    if photos_count >= PHOTOS_MAX:
+        await message.answer("Достаточно фото, спасибо! 👍")
+        logger.info(f"User {user_id} tried to send more than {PHOTOS_MAX} photos")
+        return
+    
+    media_group_id = message.media_group_id
+    
+    if media_group_id:
+        if media_group_id not in photo_group_cache:
+            photo_group_cache[media_group_id] = []
+        
+        photo_group_cache[media_group_id].append(message.photo[-1].file_id)
+        logger.info(f"Added photo to group {media_group_id}, total in group: {len(photo_group_cache[media_group_id])}")
+        
+        await asyncio.sleep(0.5)
+        
+        if media_group_id in photo_group_cache:
+            photos_in_group = photo_group_cache[media_group_id]
+            
+            for file_id in photos_in_group:
+                current_count = (await get_user(user_id))['photos_count']
+                if current_count >= PHOTOS_MAX:
+                    break
+                await save_photo(user_id, file_id)
+                logger.info(f"Saved photo for user {user_id}, new count: {current_count + 1}")
+            
+            del photo_group_cache[media_group_id]
+            
+            user = await get_user(user_id)
+            photos_count = user['photos_count']
+            
+            if photos_count < PHOTOS_MIN:
+                remaining = PHOTOS_MIN - photos_count
+                await message.answer(f"Отлично! Осталось ещё {remaining} фото 📸")
+            elif photos_count >= PHOTOS_MIN:
+                await update_user_status(user_id, 'asking_work_hours')
+                await state.set_state(UserStates.asking_work_hours)
+                await message.answer("Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)")
+                logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
+    else:
+        file_id = message.photo[-1].file_id
+        await save_photo(user_id, file_id)
+        photos_count += 1
+        logger.info(f"Saved single photo for user {user_id}, new count: {photos_count}")
+        
+        if photos_count < PHOTOS_MIN:
+            remaining = PHOTOS_MIN - photos_count
+            await message.answer(f"Отлично! Осталось ещё {remaining} фото 📸")
+        elif photos_count >= PHOTOS_MIN:
+            await update_user_status(user_id, 'asking_work_hours')
+            await state.set_state(UserStates.asking_work_hours)
+            await message.answer("Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)")
+            logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
+
+@router.message(UserStates.asking_work_hours, F.text)
+async def handle_work_hours(message: Message, state: FSMContext):
+    if message.from_user.id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(message.from_user.id):
+        return
+    
+    await state.update_data(work_hours=message.text)
+    await update_user_status(message.from_user.id, 'asking_experience')
+    await state.set_state(UserStates.asking_experience)
+    await message.answer("2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)")
+
+@router.message(UserStates.asking_experience, F.text)
+async def handle_experience(message: Message, state: FSMContext, bot):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    from database import create_application, get_photos
+    
+    data = await state.get_data()
+    work_hours = data.get('work_hours')
+    experience = message.text
+    
+    await create_application(user_id, work_hours, experience)
+    await update_user_status(user_id, 'pending_review')
+    await state.set_state(UserStates.pending_review)
+    
+    user = await get_user(user_id)
+    photos = await get_photos(user_id)
+    
+    card_text = f"👤 @{user['username']}\n"
+    card_text += f"🔗 https://t.me/{user['username']}\n\n"
+    card_text += f"⏰ Время: {work_hours}\n"
+    card_text += f"💼 Опыт: {experience}\n\n"
+    
+    await bot.send_message(ADMIN_ID, card_text)
+    
+    for photo in photos:
+        await bot.send_photo(ADMIN_ID, photo['file_id'])
+    
+    from keyboards import admin_review_keyboard
+    await bot.send_message(
+        ADMIN_ID,
+        f"Принять решение по @{user['username']}:",
+        reply_markup=admin_review_keyboard(user_id)
+    )
+    
+    await message.answer("Спасибо! Твоя заявка отправлена на рассмотрение 😊")
+    logger.info(f"Application submitted for user {user_id}")
+
+@router.message(UserStates.waiting_admin, F.text)
+async def handle_waiting_admin(message: Message, bot):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    question = message.text
+    
+    if is_review_request(question):
+        await send_reviews(message)
+        return
+    
+    await save_message(user_id, 'user', question)
+    
+    await message.answer("Твой вопрос передан менеджеру, скоро тебе ответят! 😊")
+    
+    user = await get_user(user_id)
+    
+    await bot.send_message(
+        ADMIN_ID,
+        f"❓ Дополнительный вопрос от @{user['username']}:\n\n{question}",
+        reply_markup=admin_answer_keyboard(user_id)
+    )
+    logger.info(f"Additional question from waiting user {user_id}: {question[:50]}...")
+
+@router.message(UserStates.registered, F.text)
+async def handle_registered_user(message: Message, state: FSMContext, bot):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    question = message.text
+    
+    if is_review_request(question):
+        await send_reviews(message)
+        return
+    
+    await save_message(user_id, 'user', question)
+    logger.info(f"Question from registered user {user_id}: {question[:50]}...")
+    
+    await bot.send_chat_action(user_id, "typing")
+    
+    import time
+    start_time = time.time()
+    
+    ai_result = await get_ai_response_with_retry(user_id, question)
+    
+    elapsed = time.time() - start_time
+    if elapsed < 1:
+        await asyncio.sleep(1 - elapsed)
+    
+    if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
+        await update_user_status(user_id, 'waiting_admin')
+        await state.set_state(UserStates.waiting_admin)
+        
+        await save_pending_question(user_id, question)
+        
+        user = await get_user(user_id)
+        await bot.send_message(
+            ADMIN_ID,
+            f"❓ Вопрос от @{user['username']}:\n\n{question}",
+            reply_markup=admin_answer_keyboard(user_id)
+        )
+        
+        await message.answer("Передаю твой вопрос менеджеру, скоро получишь ответ! 😊")
+        logger.info(f"Question escalated to admin for registered user {user_id}")
+    else:
+        answer = ai_result['answer']
+        await message.answer(answer)
+        await save_message(user_id, 'bot', answer)
+        await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
+        logger.info(f"Auto-answered for registered user {user_id} with confidence {ai_result['confidence']}")
+
+@router.message(UserStates.chatting, F.text)
+async def handle_question(message: Message, state: FSMContext, bot):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        logger.info(f"Rejected user {user_id} tried to send message")
+        return
+    
+    question = message.text
+    
+    if is_review_request(question):
+        await send_reviews(message)
+        return
+    
+    logger.info(f"Question from user {user_id}: {question[:50]}...")
+    await save_message(user_id, 'user', question)
+    logger.info(f"Message saved for user {user_id}")
+    
+    await bot.send_chat_action(user_id, "typing")
+    logger.info(f"Typing action sent for user {user_id}")
+    
+    import time
+    start_time = time.time()
+    
+    logger.info(f"Calling AI for user {user_id}")
+    ai_result = await get_ai_response_with_retry(user_id, question)
+    logger.info(f"AI responded for user {user_id} in {time.time() - start_time:.2f}s")
+    
+    elapsed = time.time() - start_time
+    if elapsed < 1:
+        wait_time = 1 - elapsed
+        logger.info(f"Adding {wait_time:.2f}s delay for naturalness")
+        await asyncio.sleep(wait_time)
+    
+    if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
+        logger.info(f"Escalating to admin for user {user_id}, confidence: {ai_result['confidence']}")
+        await update_user_status(user_id, 'waiting_admin')
+        await state.set_state(UserStates.waiting_admin)
+        
+        await save_pending_question(user_id, question)
+        
+        user = await get_user(user_id)
+        await bot.send_message(
+            ADMIN_ID,
+            f"❓ Вопрос от @{user['username']}:\n\n{question}",
+            reply_markup=admin_answer_keyboard(user_id)
+        )
+        
+        await message.answer("Передаю твой вопрос менеджеру, скоро получишь ответ! 😊")
+        logger.info(f"Question escalated to admin for user {user_id}")
+    else:
+        answer = ai_result['answer']
+        logger.info(f"Sending auto-answer to user {user_id}: {answer[:50]}...")
+        await message.answer(answer)
+        await save_message(user_id, 'bot', answer)
+        await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
+        logger.info(f"Auto-answered for user {user_id} with confidence {ai_result['confidence']}")
+
+@router.message(F.text)
+async def block_rejected_users(message: Message):
+    if message.from_user.id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(message.from_user.id):
+        logger.info(f"Blocked message from rejected user {message.from_user.id}")
+        return
