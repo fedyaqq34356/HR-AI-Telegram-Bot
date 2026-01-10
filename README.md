@@ -41,7 +41,7 @@ A sophisticated Telegram bot designed for recruitment agencies working with stre
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ai-recruitment-bot.git
+git clone https://github.com/fedyaqq34356/HR-AI-Telegram-Bot.git
 cd ai-recruitment-bot
 ```
 
