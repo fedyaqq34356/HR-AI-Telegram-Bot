@@ -6,6 +6,7 @@ class UserStates(StatesGroup):
     asking_work_hours = State()
     asking_experience = State()
     pending_review = State()
+    helping_registration = State()
     waiting_screenshot = State()
     registered = State()
     rejected = State()
