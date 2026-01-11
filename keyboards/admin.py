@@ -24,10 +24,13 @@ def admin_main_menu():
     )
     builder.row(
         KeyboardButton(text="💬 Переписки"),
-        KeyboardButton(text="📋 Логи")
+        KeyboardButton(text="✉️ Написать девушке")
     )
     builder.row(
-        KeyboardButton(text="🚫 Запретные темы"),
+        KeyboardButton(text="📋 Логи"),
+        KeyboardButton(text="🚫 Запретные темы")
+    )
+    builder.row(
         KeyboardButton(text="📥 Экспорт переписок")
     )
     return builder.as_markup(resize_keyboard=True)
@@ -49,7 +52,7 @@ def forbidden_topics_keyboard(topics):
     )
     return builder.as_markup()
 
-def users_list_keyboard(users):
+def users_list_keyboard(users, action='view'):
     builder = InlineKeyboardBuilder()
     for user in users[:20]:
         status_emoji = {
@@ -59,13 +62,18 @@ def users_list_keyboard(users):
             'approved': '✅',
             'rejected': '❌',
             'registered': '📝',
-            'waiting_screenshot': '📸'
+            'waiting_screenshot': '📸',
+            'helping_registration': '📋'
         }.get(user['status'], '❓')
+        
+        username_display = f"@{user['username']}" if user['username'] else f"User {user['user_id']}"
+        
+        callback_prefix = 'write' if action == 'write' else 'view_conv'
         
         builder.row(
             InlineKeyboardButton(
-                text=f"{status_emoji} @{user['username']} ({user['status']})",
-                callback_data=f"view_conv_{user['user_id']}"
+                text=f"{status_emoji} {username_display}",
+                callback_data=f"{callback_prefix}_{user['user_id']}"
             )
         )
     return builder.as_markup()
