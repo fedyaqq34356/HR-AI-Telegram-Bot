@@ -44,7 +44,7 @@ async def check_group_membership(bot, user_id):
         return False
 
 @router.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
     
     if user_id == ADMIN_ID:
@@ -54,8 +54,9 @@ async def cmd_start(message: Message, state: FSMContext):
         return
     
     username = message.from_user.username or f"user_{user_id}"
-    
     user = await get_user(user_id)
+    
+    is_in_group = await check_group_membership(bot, user_id)
     
     if user and user['status'] == 'rejected':
         logger.info(f"Rejected user {user_id} tried to start bot")
@@ -63,15 +64,37 @@ async def cmd_start(message: Message, state: FSMContext):
     
     if not user:
         await create_user(user_id, username)
-        await update_user_status(user_id, 'chatting')
         
-        welcome_msg = await get_setting('welcome_message')
-        await message.answer(welcome_msg)
-        await state.set_state(UserStates.chatting)
-        logger.info(f"New user {user_id} (@{username}) started bot")
+        if is_in_group:
+            await update_user_status(user_id, 'registered')
+            await state.set_state(UserStates.registered)
+            await message.answer("Привет! Вижу ты уже с нами в группе 😊\nЧем могу помочь?")
+            logger.info(f"Existing group member {user_id} started bot")
+        else:
+            await update_user_status(user_id, 'chatting')
+            await state.set_state(UserStates.chatting)
+            welcome_msg = await get_setting('welcome_message')
+            await message.answer(welcome_msg)
+            logger.info(f"New user {user_id} (@{username}) started bot")
     else:
-        await message.answer("С возвращением! Чем могу помочь? 😊")
-        await state.set_state(UserStates.chatting)
+        if is_in_group and user['status'] not in ['registered', 'approved']:
+            await update_user_status(user_id, 'registered')
+            await state.set_state(UserStates.registered)
+            await message.answer("С возвращением! Вижу ты присоединилась к группе 😊")
+        else:
+            await message.answer("С возвращением! Чем могу помочь? 😊")
+            status_to_state = {
+                'chatting': UserStates.chatting,
+                'asking_work_hours': UserStates.asking_work_hours,
+                'asking_experience': UserStates.asking_experience,
+                'pending_review': UserStates.pending_review,
+                'waiting_screenshot': UserStates.waiting_screenshot,
+                'registered': UserStates.registered,
+                'helping_registration': UserStates.helping_registration,
+                'waiting_admin': UserStates.waiting_admin,
+            }
+            new_state = status_to_state.get(user['status'], UserStates.chatting)
+            await state.set_state(new_state)
 
 @router.message(UserStates.chatting, F.photo)
 async def handle_photo_in_chatting(message: Message, state: FSMContext):
