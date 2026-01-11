@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from config import ADMIN_ID, PHOTOS_MIN, PHOTOS_MAX, AI_CONFIDENCE_THRESHOLD, TRAINING_GROUP_ID, CHAT_GROUP_ID
+from config import ADMIN_ID, PHOTOS_MIN, PHOTOS_MAX, AI_CONFIDENCE_THRESHOLD, GROUP_ID
 from states import UserStates
 from keyboards import admin_answer_keyboard
 from database import (
@@ -32,13 +32,10 @@ def get_user_display_name(user_data):
 
 async def check_group_membership(bot, user_id):
     try:
-        training_member = await bot.get_chat_member(TRAINING_GROUP_ID, user_id)
-        chat_member = await bot.get_chat_member(CHAT_GROUP_ID, user_id)
+        member = await bot.get_chat_member(GROUP_ID, user_id)
+        in_group = member.status in ['member', 'administrator', 'creator']
         
-        in_training = training_member.status in ['member', 'administrator', 'creator']
-        in_chat = chat_member.status in ['member', 'administrator', 'creator']
-        
-        if in_training or in_chat:
+        if in_group:
             await add_user_to_groups(user_id)
             return True
         return False
