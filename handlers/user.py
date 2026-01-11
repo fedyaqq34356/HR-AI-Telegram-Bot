@@ -69,6 +69,18 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     if await is_user_rejected(user_id):
         return
     
+    current_state = await state.get_state()
+    
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: если пользователь в helping_registration/waiting_screenshot - это скриншот!
+    if current_state in [UserStates.helping_registration.state, UserStates.waiting_screenshot.state, UserStates.registered.state]:
+        logger.info(f"User {user_id} sent photo in state {current_state}, treating as screenshot")
+        await update_user_status(user_id, 'waiting_screenshot')
+        await state.set_state(UserStates.waiting_screenshot)
+        
+        from handlers.screenshot import handle_screenshot
+        await handle_screenshot(message, message.bot, state)
+        return
+    
     user = await get_user(user_id)
     photos_count = user['photos_count']
     
@@ -368,6 +380,24 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         await save_message(user_id, 'bot', answer)
         await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
         logger.info(f"Auto-answered for registered user {user_id} with confidence {ai_result['confidence']}")
+
+@router.message(UserStates.registered, F.photo)
+async def handle_screenshot_from_registered(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    logger.info(f"User {user_id} sent photo during registered state, processing as screenshot")
+    
+    await update_user_status(user_id, 'waiting_screenshot')
+    await state.set_state(UserStates.waiting_screenshot)
+    
+    from handlers.screenshot import handle_screenshot
+    await handle_screenshot(message, message.bot, state)
 
 @router.message(UserStates.chatting, F.text)
 async def handle_question(message: Message, state: FSMContext, bot):
