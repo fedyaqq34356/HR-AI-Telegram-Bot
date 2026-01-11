@@ -30,6 +30,20 @@ async def get_all_users_list():
         async with db.execute('SELECT user_id, username, status FROM users ORDER BY last_activity DESC') as cursor:
             return await cursor.fetchall()
 
+async def is_user_in_groups(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('SELECT in_groups FROM users WHERE user_id = ?', (user_id,)) as cursor:
+            result = await cursor.fetchone()
+            return result and result[0] == 1
+
+async def add_user_to_groups(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE users SET in_groups = 1 WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+
 async def get_stats():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute('SELECT COUNT(*) FROM users') as cursor:
