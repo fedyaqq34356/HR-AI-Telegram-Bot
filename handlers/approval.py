@@ -6,6 +6,7 @@ from aiogram.fsm.storage.base import StorageKey
 
 from states import UserStates
 from database import update_application_status, update_user_status, get_setting
+from config import TRAINING_GROUP_ID, CHAT_GROUP_ID
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -52,6 +53,10 @@ Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 6. Я отправляю заявку в офис. На следующий будний день твой аккаунт активируют."""
     
     await bot.send_message(user_id, part2_text)
+    
+    await update_user_status(user_id, 'waiting_screenshot')
+    await user_state.set_state(UserStates.waiting_screenshot)
+    logger.info(f"Set state to waiting_screenshot after sending registration instructions for user {user_id}")
     
     await callback.message.edit_text(
         callback.message.text + "\n\n✅ ОДОБРЕНО"
