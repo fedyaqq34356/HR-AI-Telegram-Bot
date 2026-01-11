@@ -269,7 +269,7 @@ async def handle_screenshot_from_helping(message: Message, state: FSMContext):
     if await is_user_rejected(user_id):
         return
     
-    logger.info(f"User {user_id} sent photo during helping_registration, switching to waiting_screenshot")
+    logger.info(f"User {user_id} sent photo during helping_registration, processing as screenshot")
     
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
