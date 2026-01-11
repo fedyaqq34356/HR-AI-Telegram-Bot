@@ -31,6 +31,15 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
         logger.info(f"User {user_id} is rejected, ignoring screenshot")
         return
     
+    current_state = await state.get_state()
+    logger.info(f"Current state for user {user_id}: {current_state}")
+    
+    if current_state != UserStates.waiting_screenshot.state:
+        logger.warning(f"User {user_id} sent photo but not in waiting_screenshot state, current: {current_state}")
+        await update_user_status(user_id, 'waiting_screenshot')
+        await state.set_state(UserStates.waiting_screenshot)
+        logger.info(f"Force set state to waiting_screenshot for user {user_id}")
+    
     try:
         file = await bot.get_file(message.photo[-1].file_id)
         logger.info(f"Got file info for user {user_id}: {file.file_path}")
@@ -114,10 +123,12 @@ async def handle_manual_id(message: Message, bot, state: FSMContext):
     
     if not manual_id.isdigit():
         logger.info(f"Manual ID from user {user_id} is not digits: '{manual_id}'")
+        await message.answer("Пожалуйста, пришли только цифры ID (например: 351681973)")
         return
     
     if len(manual_id) < 6 or len(manual_id) > 15:
         logger.info(f"Manual ID from user {user_id} has invalid length: {len(manual_id)}")
+        await message.answer("ID должен содержать от 6 до 15 цифр. Проверь и отправь ещё раз.")
         return
     
     user_data = await get_user(user_id)
