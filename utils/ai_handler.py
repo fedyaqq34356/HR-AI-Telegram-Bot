@@ -30,7 +30,7 @@ async def check_forbidden_topics(message):
                 return True
     return False
 
-async def build_context_prompt(user_id, question):
+async def build_context_prompt(user_id, question, is_in_groups=False):
     user = await get_user(user_id)
     history = await get_messages(user_id, limit=10)
     
@@ -53,8 +53,11 @@ async def build_context_prompt(user_id, question):
     
     learning_text = "\n".join([f"Q: {l['question']}\nA: {l['answer']} (confidence: {l['confidence']})" for l in learning[:10]])
     
+    group_status = "ЕСТЬ В ГРУППАХ (можно отвечать на рабочие вопросы)" if is_in_groups else "НЕТ В ГРУППАХ (только регистрация)"
+    
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
+СТАТУС УЧАСТИЯ: {group_status}
 
 ИСТОРИЯ ДИАЛОГА:
 {history_text}
@@ -71,9 +74,11 @@ async def build_context_prompt(user_id, question):
 ИНСТРУКЦИЯ:
 1. Проверь, есть ли точный ответ в FAQ
 2. Проверь обученные ответы
-3. Если уверен на 80%+ — ответь
-4. Если нет — верни escalate: true
-5. Ответ должен быть в стиле менеджера Valencia
+3. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
+4. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы
+5. Если уверен на 80%+ — ответь
+6. Если нет — верни escalate: true
+7. Ответ должен быть в стиле менеджера Valencia
 """
     
     return context_prompt
@@ -250,7 +255,7 @@ async def check_faq_direct_match(question):
     
     return None
 
-async def get_ai_response_with_retry(user_id, question, max_retries=2):
+async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_groups=False):
     logger.info(f"Starting AI request with retry for user {user_id}, max_retries={max_retries}")
     
     direct_answer = await check_faq_direct_match(question)
@@ -265,7 +270,7 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2):
     for attempt in range(max_retries):
         try:
             logger.info(f"Attempt {attempt + 1}/{max_retries} for user {user_id}")
-            response = await get_ai_response(user_id, question)
+            response = await get_ai_response(user_id, question, is_in_groups)
             if response['confidence'] > 0 or response['escalate']:
                 logger.info(f"AI response successful on attempt {attempt + 1} for user {user_id}")
                 return response
@@ -299,7 +304,7 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2):
         'escalate': True
     }
 
-async def get_ai_response(user_id, question):
+async def get_ai_response(user_id, question, is_in_groups=False):
     if await check_forbidden_topics(question):
         logger.info(f"Forbidden topic detected for user {user_id}")
         return {
@@ -309,7 +314,7 @@ async def get_ai_response(user_id, question):
         }
     
     logger.info(f"Building context for user {user_id}")
-    context_prompt = await build_context_prompt(user_id, question)
+    context_prompt = await build_context_prompt(user_id, question, is_in_groups)
     logger.info(f"Context built for user {user_id}, calling AI...")
     
     try:
