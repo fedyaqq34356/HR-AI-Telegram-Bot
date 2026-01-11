@@ -5,8 +5,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
-TRAINING_GROUP_ID = int(os.getenv('TRAINING_GROUP_ID'))
-CHAT_GROUP_ID = int(os.getenv('CHAT_GROUP_ID'))
+GROUP_ID = int(os.getenv('GROUP_ID'))
 DB_PATH = 'bot.db'
 
 PHOTOS_MIN = 2
