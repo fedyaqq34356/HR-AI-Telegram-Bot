@@ -6,7 +6,7 @@ from aiogram.fsm.storage.base import StorageKey
 
 from states import UserStates
 from database import update_application_status, update_user_status, get_setting
-from config import TRAINING_GROUP_ID, CHAT_GROUP_ID
+from config import GROUP_ID
 
 router = Router()
 logger = logging.getLogger(__name__)
