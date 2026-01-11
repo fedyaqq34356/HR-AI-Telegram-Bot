@@ -10,7 +10,8 @@ async def init_db():
                 status TEXT DEFAULT 'new',
                 registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                photos_count INTEGER DEFAULT 0
+                photos_count INTEGER DEFAULT 0,
+                in_groups INTEGER DEFAULT 0
             )
         ''')
         
