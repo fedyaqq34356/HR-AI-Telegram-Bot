@@ -91,6 +91,22 @@ async def show_conversations_menu(message: Message):
         reply_markup=users_list_keyboard(users)
     )
 
+@router.message(F.text == "✉️ Написать девушке")
+async def write_to_user_menu(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    users = await get_all_users_list()
+    
+    if not users:
+        await message.answer("Пока нет пользователей", reply_markup=admin_main_menu())
+        return
+    
+    await message.answer(
+        "✉️ Выберите пользователя для отправки сообщения:",
+        reply_markup=users_list_keyboard(users, action='write')
+    )
+
 @router.message(F.text == "📋 Логи")
 async def send_logs_menu(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -198,6 +214,23 @@ async def admin_answer_callback(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(f"Напиши ответ для пользователя {user_id} или перешли сообщение/файл:")
     await callback.answer()
 
+@router.callback_query(F.data.startswith("write_"))
+async def admin_write_callback(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    user_id = int(callback.data.split("_")[1])
+    
+    logger.info(f"Admin wants to write to user {user_id}")
+    await state.update_data(writing_user_id=user_id)
+    await state.set_state(AdminStates.answering_question)
+    
+    user = await get_user(user_id)
+    user_display = f"@{user['username']}" if user['username'] else user_id
+    
+    await callback.message.answer(f"Напиши сообщение для {user_display} или перешли контент:")
+    await callback.answer()
+
 @router.message(AdminStates.answering_question)
 async def admin_answer_any(message: Message, state: FSMContext, bot):
     from aiogram.fsm.storage.base import StorageKey
@@ -208,8 +241,8 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
     
     logger.info(f"Admin is sending response")
     data = await state.get_data()
-    user_id = data.get('answering_user_id')
-    logger.info(f"Answering user_id from state: {user_id}")
+    user_id = data.get('answering_user_id') or data.get('writing_user_id')
+    logger.info(f"Target user_id from state: {user_id}")
     
     if not user_id:
         await message.answer("❌ Ошибка: не найден пользователь для ответа", reply_markup=admin_main_menu())
