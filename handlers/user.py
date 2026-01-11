@@ -5,12 +5,13 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from config import ADMIN_ID, PHOTOS_MIN, PHOTOS_MAX, AI_CONFIDENCE_THRESHOLD
+from config import ADMIN_ID, PHOTOS_MIN, PHOTOS_MAX, AI_CONFIDENCE_THRESHOLD, TRAINING_GROUP_ID, CHAT_GROUP_ID
 from states import UserStates
 from keyboards import admin_answer_keyboard
 from database import (
     get_user, create_user, update_user_status, save_message,
-    save_photo, get_setting, save_ai_learning, save_pending_question
+    save_photo, get_setting, save_ai_learning, save_pending_question,
+    is_user_in_groups, add_user_to_groups
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
@@ -28,6 +29,22 @@ def get_user_display_name(user_data):
     if user_data.get('username'):
         return f"@{user_data['username']}"
     return user_data.get('first_name', f"User {user_data['user_id']}")
+
+async def check_group_membership(bot, user_id):
+    try:
+        training_member = await bot.get_chat_member(TRAINING_GROUP_ID, user_id)
+        chat_member = await bot.get_chat_member(CHAT_GROUP_ID, user_id)
+        
+        in_training = training_member.status in ['member', 'administrator', 'creator']
+        in_chat = chat_member.status in ['member', 'administrator', 'creator']
+        
+        if in_training or in_chat:
+            await add_user_to_groups(user_id)
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error checking group membership for user {user_id}: {e}")
+        return False
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -67,17 +84,6 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         return
     
     if await is_user_rejected(user_id):
-        return
-    
-    current_state = await state.get_state()
-    
-    if current_state in [UserStates.helping_registration.state, UserStates.waiting_screenshot.state, UserStates.registered.state]:
-        logger.info(f"User {user_id} sent photo in state {current_state}, treating as screenshot")
-        await update_user_status(user_id, 'waiting_screenshot')
-        await state.set_state(UserStates.waiting_screenshot)
-        
-        from handlers.screenshot import handle_screenshot
-        await handle_screenshot(message, message.bot, state)
         return
     
     user = await get_user(user_id)
@@ -271,7 +277,7 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
         logger.info(f"Auto-answered registration question for user {user_id} with confidence {ai_result['confidence']}")
 
 @router.message(UserStates.helping_registration, F.photo)
-async def handle_screenshot_from_helping(message: Message, state: FSMContext):
+async def handle_photo_during_registration(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     if user_id == ADMIN_ID:
@@ -341,12 +347,16 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
     await save_message(user_id, 'user', question)
     logger.info(f"Question from registered user {user_id}: {question[:50]}...")
     
+    in_groups = await is_user_in_groups(user_id)
+    if not in_groups:
+        in_groups = await check_group_membership(bot, user_id)
+    
     await bot.send_chat_action(user_id, "typing")
     
     import time
     start_time = time.time()
     
-    ai_result = await get_ai_response_with_retry(user_id, question)
+    ai_result = await get_ai_response_with_retry(user_id, question, is_in_groups=in_groups)
     
     elapsed = time.time() - start_time
     if elapsed < 1:
