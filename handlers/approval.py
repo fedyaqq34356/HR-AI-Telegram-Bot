@@ -5,7 +5,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 
 from states import UserStates
-from keyboards import groups_keyboard
 from database import update_application_status, update_user_status, get_setting
 
 router = Router()
@@ -22,12 +21,9 @@ async def approve_application(callback: CallbackQuery, bot, state: FSMContext):
     
     user_state_key = StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id)
     user_state = FSMContext(storage=state.storage, key=user_state_key)
-    await user_state.set_state(UserStates.waiting_screenshot)
+    await user_state.set_state(UserStates.helping_registration)
     
-    logger.info(f"Set state waiting_screenshot for user {user_id}")
-    
-    approval_msg = await get_setting('approval_message')
-    await bot.send_message(user_id, approval_msg, reply_markup=groups_keyboard())
+    logger.info(f"Set state helping_registration for user {user_id}")
     
     screenshot_file = FSInputFile('images/halo_download.jpg')
     part1_text = """📰 Скачивание приложения
