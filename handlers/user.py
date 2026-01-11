@@ -107,6 +107,11 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         return
     
     user = await get_user(user_id)
+    
+    if user['status'] not in ['new', 'chatting', 'waiting_photos']:
+        logger.info(f"User {user_id} sent photo but not in initial states, status: {user['status']}")
+        return
+    
     photos_count = user['photos_count']
     
     if photos_count >= PHOTOS_MAX:
@@ -306,7 +311,7 @@ async def handle_photo_during_registration(message: Message, state: FSMContext):
     if await is_user_rejected(user_id):
         return
     
-    logger.info(f"User {user_id} sent photo during helping_registration, switching to waiting_screenshot")
+    logger.info(f"User {user_id} sent photo during helping_registration (screenshot with ID)")
     
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
