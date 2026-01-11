@@ -71,7 +71,6 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     
     current_state = await state.get_state()
     
-    # КРИТИЧЕСКАЯ ПРОВЕРКА: если пользователь в helping_registration/waiting_screenshot - это скриншот!
     if current_state in [UserStates.helping_registration.state, UserStates.waiting_screenshot.state, UserStates.registered.state]:
         logger.info(f"User {user_id} sent photo in state {current_state}, treating as screenshot")
         await update_user_status(user_id, 'waiting_screenshot')
