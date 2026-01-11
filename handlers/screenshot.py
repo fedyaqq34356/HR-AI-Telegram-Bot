@@ -5,7 +5,8 @@ from aiogram.fsm.context import FSMContext
 
 from config import ADMIN_ID
 from states import UserStates
-from database import get_user, update_user_status
+from keyboards import groups_keyboard
+from database import get_user, update_user_status, get_setting
 from utils.ocr_handler import extract_id
 
 router = Router()
@@ -14,6 +15,11 @@ logger = logging.getLogger(__name__)
 async def is_user_rejected(user_id):
     user = await get_user(user_id)
     return user and user['status'] == 'rejected'
+
+def get_user_display_name(user_data):
+    if user_data.get('username'):
+        return f"@{user_data['username']}"
+    return user_data.get('first_name', f"User {user_data['user_id']}")
 
 @router.message(UserStates.waiting_screenshot, F.photo)
 async def handle_screenshot(message: Message, bot, state: FSMContext):
@@ -36,7 +42,14 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
         logger.info(f"Extracted ID for user {user_id}: {extracted_id}")
         
         user_data = await get_user(user_id)
+        user_display = get_user_display_name({
+            'username': user_data['username'],
+            'first_name': message.from_user.first_name,
+            'user_id': user_id
+        })
+        
         username = user_data['username']
+        user_link = f"https://t.me/{username}" if username else f"tg://user?id={user_id}"
         
         caption_text = message.caption.strip() if message.caption else ""
         logger.info(f"Caption from user {user_id}: '{caption_text}'")
@@ -46,11 +59,15 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             await bot.send_photo(
                 ADMIN_ID,
                 message.photo[-1].file_id,
-                caption=f"📸 Скриншот\n🆔 ID: {extracted_id}\n👤 @{username}\n🔗 https://t.me/{username}"
+                caption=f"📸 Скриншот\n🆔 ID: {extracted_id}\n👤 {user_display}\n🔗 {user_link}"
             )
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
-            await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅\n\nЧтобы бот продолжал с вами коммуницировать пропишите /start")
+            
+            approval_msg = await get_setting('approval_message')
+            await message.answer(approval_msg, reply_markup=groups_keyboard())
+            
+            await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
             logger.info(f"Screenshot processed successfully for user {user_id}, ID: {extracted_id}")
             
         elif caption_text and caption_text.isdigit() and 6 <= len(caption_text) <= 15:
@@ -58,11 +75,15 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             await bot.send_photo(
                 ADMIN_ID,
                 message.photo[-1].file_id,
-                caption=f"📸 Скриншот\n🆔 ID (из подписи): {caption_text}\n👤 @{username}\n🔗 https://t.me/{username}"
+                caption=f"📸 Скриншот\n🆔 ID (из подписи): {caption_text}\n👤 {user_display}\n🔗 {user_link}"
             )
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
-            await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅\n\nЧтобы бот продолжал с вами коммуницировать пропишите /start")
+            
+            approval_msg = await get_setting('approval_message')
+            await message.answer(approval_msg, reply_markup=groups_keyboard())
+            
+            await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
             logger.info(f"Screenshot with caption processed for user {user_id}: {caption_text}")
             
         else:
@@ -70,7 +91,7 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             await bot.send_photo(
                 ADMIN_ID,
                 message.photo[-1].file_id,
-                caption=f"📸 Скриншот\n👤 @{username}\n🔗 https://t.me/{username}\n\n⚠️ ID не распознан"
+                caption=f"📸 Скриншот\n👤 {user_display}\n🔗 {user_link}\n\n⚠️ ID не распознан"
             )
             await message.answer("Не могу распознать ID на скриншоте. Пожалуйста, пришли его вручную текстом (только цифры).")
             logger.info(f"Sent manual ID request to user {user_id}")
@@ -100,15 +121,27 @@ async def handle_manual_id(message: Message, bot, state: FSMContext):
         return
     
     user_data = await get_user(user_id)
+    user_display = get_user_display_name({
+        'username': user_data['username'],
+        'first_name': message.from_user.first_name,
+        'user_id': user_id
+    })
+    
+    username = user_data['username']
+    user_link = f"https://t.me/{username}" if username else f"tg://user?id={user_id}"
     
     logger.info(f"Valid manual ID received from user {user_id}: {manual_id}")
     
     await bot.send_message(
         ADMIN_ID,
-        f"🆔 ID (вручную): {manual_id}\n👤 @{user_data['username']}\n🔗 https://t.me/{user_data['username']}"
+        f"🆔 ID (вручную): {manual_id}\n👤 {user_display}\n🔗 {user_link}"
     )
     
     await update_user_status(user_id, 'registered')
     await state.set_state(UserStates.registered)
-    await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅\n\nЧтобы бот продолжал с вами коммуницировать пропишите /start")
+    
+    approval_msg = await get_setting('approval_message')
+    await message.answer(approval_msg, reply_markup=groups_keyboard())
+    
+    await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
     logger.info(f"Manual ID processed successfully for user {user_id}: {manual_id}")
