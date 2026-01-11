@@ -73,7 +73,7 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     photos_count = user['photos_count']
     
     if photos_count >= PHOTOS_MAX:
-        await message.answer("Достаточно фото, спасибо! 👍")
+        await message.answer(f"Максимум {PHOTOS_MAX} фото! У тебя уже загружено достаточно 👍")
         logger.info(f"User {user_id} tried to send more than {PHOTOS_MAX} photos")
         return
     
@@ -81,36 +81,46 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     
     if media_group_id:
         if media_group_id not in photo_group_cache:
-            photo_group_cache[media_group_id] = []
+            photo_group_cache[media_group_id] = {
+                'photos': [],
+                'processed': False
+            }
         
-        photo_group_cache[media_group_id].append(message.photo[-1].file_id)
-        logger.info(f"Added photo to group {media_group_id}, total in group: {len(photo_group_cache[media_group_id])}")
-        
-        await asyncio.sleep(0.5)
-        
-        if media_group_id in photo_group_cache:
-            photos_in_group = photo_group_cache[media_group_id]
+        if not photo_group_cache[media_group_id]['processed']:
+            photo_group_cache[media_group_id]['photos'].append(message.photo[-1].file_id)
+            logger.info(f"Added photo to group {media_group_id}, total: {len(photo_group_cache[media_group_id]['photos'])}")
             
-            for file_id in photos_in_group:
+            await asyncio.sleep(1.0)
+            
+            if media_group_id in photo_group_cache and not photo_group_cache[media_group_id]['processed']:
+                photos_in_group = photo_group_cache[media_group_id]['photos']
+                photo_group_cache[media_group_id]['processed'] = True
+                
                 current_count = (await get_user(user_id))['photos_count']
-                if current_count >= PHOTOS_MAX:
-                    break
-                await save_photo(user_id, file_id)
-                logger.info(f"Saved photo for user {user_id}, new count: {current_count + 1}")
-            
-            del photo_group_cache[media_group_id]
-            
-            user = await get_user(user_id)
-            photos_count = user['photos_count']
-            
-            if photos_count < PHOTOS_MIN:
-                remaining = PHOTOS_MIN - photos_count
-                await message.answer(f"Отлично! Осталось ещё {remaining} фото 📸")
-            elif photos_count >= PHOTOS_MIN:
-                await update_user_status(user_id, 'asking_work_hours')
-                await state.set_state(UserStates.asking_work_hours)
-                await message.answer("Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)")
-                logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
+                total_photos = current_count + len(photos_in_group)
+                
+                if total_photos > PHOTOS_MAX:
+                    await message.answer(f"Можно загрузить максимум {PHOTOS_MAX} фото! Отправь не больше {PHOTOS_MAX - current_count} фото.")
+                    del photo_group_cache[media_group_id]
+                    return
+                
+                for file_id in photos_in_group:
+                    await save_photo(user_id, file_id)
+                    logger.info(f"Saved photo for user {user_id}")
+                
+                del photo_group_cache[media_group_id]
+                
+                user = await get_user(user_id)
+                photos_count = user['photos_count']
+                
+                if photos_count < PHOTOS_MIN:
+                    remaining = PHOTOS_MIN - photos_count
+                    await message.answer(f"Отлично! Нужно ещё минимум {remaining} фото 📸")
+                elif photos_count >= PHOTOS_MIN:
+                    await update_user_status(user_id, 'asking_work_hours')
+                    await state.set_state(UserStates.asking_work_hours)
+                    await message.answer("Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)")
+                    logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
     else:
         file_id = message.photo[-1].file_id
         await save_photo(user_id, file_id)
@@ -119,7 +129,7 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         
         if photos_count < PHOTOS_MIN:
             remaining = PHOTOS_MIN - photos_count
-            await message.answer(f"Отлично! Осталось ещё {remaining} фото 📸")
+            await message.answer(f"Отлично! Нужно ещё минимум {remaining} фото 📸")
         elif photos_count >= PHOTOS_MIN:
             await update_user_status(user_id, 'asking_work_hours')
             await state.set_state(UserStates.asking_work_hours)
@@ -178,8 +188,11 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     
     await bot.send_message(ADMIN_ID, card_text)
     
-    for photo in photos:
-        await bot.send_photo(ADMIN_ID, photo['file_id'])
+    from aiogram.types import InputMediaPhoto
+    media_group = [InputMediaPhoto(media=photo['file_id']) for photo in photos]
+    
+    if media_group:
+        await bot.send_media_group(ADMIN_ID, media=media_group)
     
     from keyboards import admin_review_keyboard
     await bot.send_message(
