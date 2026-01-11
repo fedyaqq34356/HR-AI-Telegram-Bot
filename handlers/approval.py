@@ -42,7 +42,7 @@ https://livegirl.me/#/mobilepage"""
 • Никнейм
 • Возраст
 • Языки: арабский, английский, украинский, русский
-3. В разделе Агентство выбираешь: Tosagency
+3. В разделе Агентство выбираешь: Tosagency-Ukraine
 4. Загружаешь свою фотографию и записываешь короткое видео-приветствие.
 🔹 Пример для видео:
 Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
@@ -54,9 +54,7 @@ Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
     
     await bot.send_message(user_id, part2_text)
     
-    await update_user_status(user_id, 'waiting_screenshot')
-    await user_state.set_state(UserStates.waiting_screenshot)
-    logger.info(f"Set state to waiting_screenshot after sending registration instructions for user {user_id}")
+    logger.info(f"Registration instructions sent, user {user_id} remains in helping_registration")
     
     await callback.message.edit_text(
         callback.message.text + "\n\n✅ ОДОБРЕНО"
