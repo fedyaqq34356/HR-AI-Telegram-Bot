@@ -37,7 +37,9 @@ async def build_context_prompt(user_id, question):
     status = user['status']
     if status in ['new', 'chatting', 'waiting_photos', 'asking_work_hours', 'asking_experience']:
         category = 'new'
-    elif status in ['registered', 'approved', 'waiting_screenshot']:
+    elif status in ['helping_registration', 'waiting_screenshot']:
+        category = 'registration'
+    elif status in ['registered', 'approved']:
         category = 'working'
     else:
         category = 'new'
@@ -47,7 +49,7 @@ async def build_context_prompt(user_id, question):
     
     history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
     
-    faq_text = "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq[:15]])
+    faq_text = "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq[:20]])
     
     learning_text = "\n".join([f"Q: {l['question']}\nA: {l['answer']} (confidence: {l['confidence']})" for l in learning[:10]])
     
@@ -187,6 +189,36 @@ async def check_faq_direct_match(question):
     if any(kw in q_lower for kw in detailed_keywords):
         return detailed_info
     
+    agency_keywords = ['какое агентство', 'какого агента', 'агентство выбрать', 
+                      'какое агенство', 'что за агентство', 'название агентства']
+    if any(kw in q_lower for kw in agency_keywords):
+        return 'В разделе Агентство выбирай: Tosagency-Ukraine 😊'
+    
+    age_keywords = ['возраст', 'сколько лет указать', '40 лет', '45 лет', '50 лет',
+                   'большой возраст', 'мне много лет']
+    if any(kw in q_lower for kw in age_keywords):
+        return 'Ты можешь указать возраст чуть меньше реального, например 30-33 года. Это нормально 😊'
+    
+    country_keywords = ['страна', 'какую страну', 'казахстан', 'россия', 'беларусь',
+                       'страну выбрать', 'какую страну указать']
+    if any(kw in q_lower for kw in country_keywords):
+        return 'Ты можешь выбрать любую страну во время регистрации, не обязательно свою. Выбери ту, что тебе больше нравится 😊'
+    
+    languages_keywords = ['языки', 'все языки', 'обязательно языки', 'какие языки',
+                         'надо все языки', 'языки указывать']
+    if any(kw in q_lower for kw in languages_keywords):
+        return 'Да, указывай все языки: арабский, английский, украинский, русский. Это важно для алгоритма продвижения 😊'
+    
+    video_keywords = ['что говорить в видео', 'что записать', 'видео приветствие',
+                     'что сказать', 'текст для видео']
+    if any(kw in q_lower for kw in video_keywords):
+        return 'Скажи: Hello, my name is [твоё имя]. I am [возраст] years old. I live in [страна]. I want to join. 😊'
+    
+    id_keywords = ['где найти id', 'как найти id', 'где id', 'найти айди',
+                  'где мой id', 'как найти айди']
+    if any(kw in q_lower for kw in id_keywords):
+        return 'После регистрации в приложении зайди в свой профиль — там будет твой ID. Пришли скрин, где видно ID и название агентства 😊'
+    
     registration_keywords = ['как зарегистрироваться', 'как зарегаться', 'как регистрироваться', 
                             'как зарегестрироваться', 'регистрация', 'зарегаться']
     if any(kw in q_lower for kw in registration_keywords):
@@ -208,8 +240,8 @@ async def check_faq_direct_match(question):
     if any(kw in q_lower for kw in docs_keywords):
         return 'Нет, документы не нужны ✅'
     
-    age_keywords = ['со скольки лет', 'с какого возраста', 'сколько лет нужно']
-    if any(kw in q_lower for kw in age_keywords):
+    work_age_keywords = ['со скольки лет', 'с какого возраста', 'сколько лет нужно']
+    if any(kw in q_lower for kw in work_age_keywords):
         return 'С 16 лет можно начинать работу 👍'
     
     time_keywords = ['сколько времени нужно', 'сколько часов', 'минимум времени']
