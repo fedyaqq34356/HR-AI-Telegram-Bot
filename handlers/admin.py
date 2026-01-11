@@ -195,50 +195,98 @@ async def admin_answer_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.answering_question)
     logger.info(f"State set to answering_question for admin, target user: {user_id}")
     
-    await callback.message.answer(f"Напиши ответ для пользователя {user_id}:")
+    await callback.message.answer(f"Напиши ответ для пользователя {user_id} или перешли сообщение/файл:")
     await callback.answer()
 
-@router.message(AdminStates.answering_question, F.text)
-async def admin_answer_text(message: Message, state: FSMContext, bot):
+@router.message(AdminStates.answering_question)
+async def admin_answer_any(message: Message, state: FSMContext, bot):
     from aiogram.fsm.storage.base import StorageKey
     
     if message.from_user.id != ADMIN_ID:
         logger.warning(f"Non-admin user {message.from_user.id} tried to answer question")
         return
     
-    logger.info(f"Admin is answering a question, message: {message.text}")
+    logger.info(f"Admin is sending response")
     data = await state.get_data()
     user_id = data.get('answering_user_id')
     logger.info(f"Answering user_id from state: {user_id}")
-    answer = message.text
+    
+    if not user_id:
+        await message.answer("❌ Ошибка: не найден пользователь для ответа", reply_markup=admin_main_menu())
+        await state.clear()
+        return
     
     question = await get_pending_question(user_id)
-    if question:
-        await save_ai_learning(question, answer, 'admin', 100)
-        await delete_pending_question(user_id)
-        logger.info(f"Admin answered question for user {user_id}")
     
     try:
-        await bot.send_message(user_id, answer)
-        await save_message(user_id, 'bot', answer)
+        if message.text:
+            answer = message.text
+            await bot.send_message(user_id, answer)
+            await save_message(user_id, 'bot', answer)
+            
+            if question:
+                await save_ai_learning(question, answer, 'admin', 100)
+                await delete_pending_question(user_id)
+                logger.info(f"Admin answered question for user {user_id}")
+        
+        elif message.photo:
+            caption = message.caption if message.caption else ""
+            await bot.send_photo(user_id, message.photo[-1].file_id, caption=caption)
+            if caption:
+                await save_message(user_id, 'bot', f"[Фото] {caption}")
+            logger.info(f"Admin sent photo to user {user_id}")
+        
+        elif message.document:
+            caption = message.caption if message.caption else ""
+            await bot.send_document(user_id, message.document.file_id, caption=caption)
+            if caption:
+                await save_message(user_id, 'bot', f"[Документ] {caption}")
+            logger.info(f"Admin sent document to user {user_id}")
+        
+        elif message.video:
+            caption = message.caption if message.caption else ""
+            await bot.send_video(user_id, message.video.file_id, caption=caption)
+            if caption:
+                await save_message(user_id, 'bot', f"[Видео] {caption}")
+            logger.info(f"Admin sent video to user {user_id}")
+        
+        elif message.audio:
+            caption = message.caption if message.caption else ""
+            await bot.send_audio(user_id, message.audio.file_id, caption=caption)
+            if caption:
+                await save_message(user_id, 'bot', f"[Аудио] {caption}")
+            logger.info(f"Admin sent audio to user {user_id}")
+        
+        elif message.voice:
+            await bot.send_voice(user_id, message.voice.file_id)
+            logger.info(f"Admin sent voice to user {user_id}")
+        
+        elif message.video_note:
+            await bot.send_video_note(user_id, message.video_note.file_id)
+            logger.info(f"Admin sent video note to user {user_id}")
+        
+        else:
+            await message.answer("❌ Неподдерживаемый тип сообщения", reply_markup=admin_main_menu())
+            await state.clear()
+            return
         
         user = await get_user(user_id)
         
         user_state_key = StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id)
         user_state = FSMContext(storage=state.storage, key=user_state_key)
         
-        if user['status'] in ['registered', 'waiting_screenshot']:
+        if user['status'] in ['registered', 'waiting_screenshot', 'helping_registration']:
             await update_user_status(user_id, 'registered')
             await user_state.set_state(UserStates.registered)
         else:
             await update_user_status(user_id, 'chatting')
             await user_state.set_state(UserStates.chatting)
         
-        await message.answer("✅ Ответ отправлен пользователю", reply_markup=admin_main_menu())
-        logger.info(f"Admin successfully sent answer to user {user_id}")
+        await message.answer("✅ Сообщение отправлено пользователю", reply_markup=admin_main_menu())
+        logger.info(f"Admin successfully sent message to user {user_id}")
     except Exception as e:
         await message.answer(f"❌ Ошибка при отправке: {e}", reply_markup=admin_main_menu())
-        logger.error(f"Error sending admin answer to user {user_id}: {e}")
+        logger.error(f"Error sending admin message to user {user_id}: {e}")
     
     await state.clear()
 
