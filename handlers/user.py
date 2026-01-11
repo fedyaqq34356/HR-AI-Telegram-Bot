@@ -24,6 +24,11 @@ async def is_user_rejected(user_id):
     user = await get_user(user_id)
     return user and user['status'] == 'rejected'
 
+def get_user_display_name(user_data):
+    if user_data.get('username'):
+        return f"@{user_data['username']}"
+    return user_data.get('first_name', f"User {user_data['user_id']}")
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -157,8 +162,17 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     user = await get_user(user_id)
     photos = await get_photos(user_id)
     
-    card_text = f"👤 @{user['username']}\n"
-    card_text += f"🔗 https://t.me/{user['username']}\n\n"
+    user_display = get_user_display_name({
+        'username': user['username'],
+        'first_name': message.from_user.first_name,
+        'user_id': user_id
+    })
+    
+    username = user['username']
+    user_link = f"https://t.me/{username}" if username else f"tg://user?id={user_id}"
+    
+    card_text = f"👤 {user_display}\n"
+    card_text += f"🔗 {user_link}\n\n"
     card_text += f"⏰ Время: {work_hours}\n"
     card_text += f"💼 Опыт: {experience}\n\n"
     
@@ -170,12 +184,85 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     from keyboards import admin_review_keyboard
     await bot.send_message(
         ADMIN_ID,
-        f"Принять решение по @{user['username']}:",
+        f"Принять решение по {user_display}:",
         reply_markup=admin_review_keyboard(user_id)
     )
     
     await message.answer("Спасибо! Твоя заявка отправлена на рассмотрение 😊")
     logger.info(f"Application submitted for user {user_id}")
+
+@router.message(UserStates.helping_registration, F.text)
+async def handle_registration_questions(message: Message, state: FSMContext, bot):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    question = message.text
+    
+    if is_review_request(question):
+        await send_reviews(message)
+        return
+    
+    await save_message(user_id, 'user', question)
+    logger.info(f"Registration question from user {user_id}: {question[:50]}...")
+    
+    await bot.send_chat_action(user_id, "typing")
+    
+    import time
+    start_time = time.time()
+    
+    ai_result = await get_ai_response_with_retry(user_id, question)
+    
+    elapsed = time.time() - start_time
+    if elapsed < 1:
+        await asyncio.sleep(1 - elapsed)
+    
+    if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
+        await save_pending_question(user_id, question)
+        
+        user = await get_user(user_id)
+        user_display = get_user_display_name({
+            'username': user['username'],
+            'first_name': message.from_user.first_name,
+            'user_id': user_id
+        })
+        
+        await bot.send_message(
+            ADMIN_ID,
+            f"❓ Вопрос о регистрации от {user_display}:\n\n{question}",
+            reply_markup=admin_answer_keyboard(user_id)
+        )
+        
+        await message.answer("Передаю твой вопрос менеджеру, скоро получишь ответ! 😊")
+        logger.info(f"Registration question escalated to admin for user {user_id}")
+    else:
+        answer = ai_result['answer']
+        await message.answer(answer)
+        await save_message(user_id, 'bot', answer)
+        await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
+        logger.info(f"Auto-answered registration question for user {user_id} with confidence {ai_result['confidence']}")
+
+@router.message(UserStates.helping_registration, F.photo)
+async def handle_screenshot_from_helping(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    if await is_user_rejected(user_id):
+        return
+    
+    logger.info(f"User {user_id} sent photo during helping_registration, switching to waiting_screenshot")
+    
+    await update_user_status(user_id, 'waiting_screenshot')
+    await state.set_state(UserStates.waiting_screenshot)
+    
+    from handlers.screenshot import handle_screenshot
+    await handle_screenshot(message, message.bot, state)
 
 @router.message(UserStates.waiting_admin, F.text)
 async def handle_waiting_admin(message: Message, bot):
@@ -198,10 +285,15 @@ async def handle_waiting_admin(message: Message, bot):
     await message.answer("Твой вопрос передан менеджеру, скоро тебе ответят! 😊")
     
     user = await get_user(user_id)
+    user_display = get_user_display_name({
+        'username': user['username'],
+        'first_name': message.from_user.first_name,
+        'user_id': user_id
+    })
     
     await bot.send_message(
         ADMIN_ID,
-        f"❓ Дополнительный вопрос от @{user['username']}:\n\n{question}",
+        f"❓ Дополнительный вопрос от {user_display}:\n\n{question}",
         reply_markup=admin_answer_keyboard(user_id)
     )
     logger.info(f"Additional question from waiting user {user_id}: {question[:50]}...")
@@ -243,9 +335,15 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         await save_pending_question(user_id, question)
         
         user = await get_user(user_id)
+        user_display = get_user_display_name({
+            'username': user['username'],
+            'first_name': message.from_user.first_name,
+            'user_id': user_id
+        })
+        
         await bot.send_message(
             ADMIN_ID,
-            f"❓ Вопрос от @{user['username']}:\n\n{question}",
+            f"❓ Вопрос от {user_display}:\n\n{question}",
             reply_markup=admin_answer_keyboard(user_id)
         )
         
@@ -303,9 +401,15 @@ async def handle_question(message: Message, state: FSMContext, bot):
         await save_pending_question(user_id, question)
         
         user = await get_user(user_id)
+        user_display = get_user_display_name({
+            'username': user['username'],
+            'first_name': message.from_user.first_name,
+            'user_id': user_id
+        })
+        
         await bot.send_message(
             ADMIN_ID,
-            f"❓ Вопрос от @{user['username']}:\n\n{question}",
+            f"❓ Вопрос от {user_display}:\n\n{question}",
             reply_markup=admin_answer_keyboard(user_id)
         )
         
