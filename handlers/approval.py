@@ -27,8 +27,8 @@ async def approve_application(callback: CallbackQuery, bot, state: FSMContext):
     logger.info(f"Set state helping_registration for user {user_id}")
     
     screenshot_file = FSInputFile('images/halo_download.jpg')
-    part1_text = """📰 Скачивание приложения
-Заходишь на сайт и скачиваешь приложение, подходящее для твоего телефона For hosts ( розовое ).
+    part1_text = """🔰 Скачивание приложения
+Заходишь на сайт и скачиваешь приложение For hosts, подходящее для твоего телефона (выделено розовым цветом).
 https://livegirl.me/#/mobilepage"""
     
     await bot.send_photo(user_id, screenshot_file, caption=part1_text)
