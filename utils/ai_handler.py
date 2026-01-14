@@ -7,7 +7,6 @@ import g4f
 
 from config import SYSTEM_PROMPT, AI_CONFIDENCE_THRESHOLD, UNIVERSAL_RESPONSE
 from database import get_messages, get_faq, get_ai_learning, get_user, get_forbidden_topics_from_db
-from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +31,8 @@ async def check_forbidden_topics(message):
     return False
 
 async def build_context_prompt(user_id, question, is_in_groups=False):
+    from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos
+    
     user = await get_user(user_id)
     history = await get_messages(user_id, limit=15)
     

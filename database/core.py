@@ -119,4 +119,17 @@ async def init_db():
             )
         ''')
         
-        await db.commit()
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS group_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER UNIQUE,
+                message_type TEXT,
+                content TEXT,
+                file_id TEXT,
+                username TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed INTEGER DEFAULT 0
+            )
+        ''')
+        
+        await db.commit()   
