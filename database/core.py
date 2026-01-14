@@ -89,4 +89,34 @@ async def init_db():
             )
         ''')
         
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS analysis_texts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER,
+                text TEXT,
+                filename TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS analysis_audios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER,
+                transcription TEXT,
+                filename TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS analysis_videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER,
+                transcription TEXT,
+                filename TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         await db.commit()

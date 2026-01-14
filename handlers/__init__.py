@@ -4,10 +4,12 @@ from .approval import router as approval_router
 from .user import router as user_router
 from .screenshot import router as screenshot_router
 from .reviews import router as reviews_router
+from .analysis import router as analysis_router
 
 def get_router() -> Router:
     router = Router()
     
+    router.include_router(analysis_router)
     router.include_router(admin_router)
     router.include_router(approval_router)
     router.include_router(screenshot_router)

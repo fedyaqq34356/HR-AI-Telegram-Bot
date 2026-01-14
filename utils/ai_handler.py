@@ -7,6 +7,7 @@ import g4f
 
 from config import SYSTEM_PROMPT, AI_CONFIDENCE_THRESHOLD, UNIVERSAL_RESPONSE
 from database import get_messages, get_faq, get_ai_learning, get_user, get_forbidden_topics_from_db
+from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,30 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     last_messages = history[-5:] if len(history) >= 5 else history
     recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
     
+    training_materials = ""
+    if is_in_groups:
+        texts = await get_all_analysis_texts()
+        audios = await get_all_analysis_audios()
+        videos = await get_all_analysis_videos()
+        
+        if texts or audios or videos:
+            training_materials = "\n\nОБУЧАЮЩИЕ МАТЕРИАЛЫ ИЗ ГРУППЫ:\n"
+            
+            if texts:
+                training_materials += "\nТЕКСТОВЫЕ МАТЕРИАЛЫ:\n"
+                for text in texts[:20]:
+                    training_materials += f"{text['text'][:500]}\n...\n"
+            
+            if audios:
+                training_materials += "\nТРАНСКРИПЦИИ АУДИО:\n"
+                for audio in audios[:10]:
+                    training_materials += f"{audio['transcription'][:500]}\n...\n"
+            
+            if videos:
+                training_materials += "\nТРАНСКРИПЦИИ ВИДЕО:\n"
+                for video in videos[:10]:
+                    training_materials += f"{video['transcription'][:500]}\n...\n"
+    
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
 СТАТУС УЧАСТИЯ: {group_status}
@@ -71,6 +96,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 
 ОБУЧЕННЫЕ ОТВЕТЫ:
 {learning_text}
+{training_materials}
 
 ТЕКУЩИЙ ВОПРОС:
 {question}
@@ -80,12 +106,13 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 2. Если вопрос связан с предыдущим сообщением (например "просто ждать?" после "аккаунт активируют") - отвечай сам с высокой confidence
 3. Проверь, есть ли точный ответ в FAQ
 4. Проверь обученные ответы
-5. Если это простая эмоция (супер, класс, ок) - отвечай поддерживающе с confidence 90+
-6. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 80+
-7. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
-8. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы
-9. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
-10. Ответ должен быть в стиле менеджера Valencia
+5. Если девушка ЕСТЬ в группе - используй обучающие материалы для ответа
+6. Если это простая эмоция (супер, класс, ок) - отвечай поддерживающе с confidence 90+
+7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 80+
+8. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
+9. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы
+10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
+11. Ответ должен быть в стиле менеджера Valencia
 """
     
     return context_prompt

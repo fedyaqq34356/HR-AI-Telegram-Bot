@@ -2,3 +2,4 @@ aiogram
 aiosqlite==0.19.0
 python-dotenv==1.0.0
 g4f==6.8.6
+faster-whisper>=0.9.0
