@@ -6,6 +6,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 GROUP_ID = int(os.getenv('GROUP_ID'))
+SMS_GROUP_ID = int(os.getenv('SMS_GROUP_ID'))
 DB_PATH = 'bot.db'
 
 PHOTOS_MIN = 2
@@ -15,6 +16,7 @@ AI_CONFIDENCE_THRESHOLD = 70
 ANALYSIS_TEXT_DIR = 'analtext'
 ANALYSIS_AUDIO_DIR = 'analaudio'
 ANALYSIS_VIDEO_DIR = 'analvideo'
+ANALYSIS_SMS_DIR = 'analsms'
 
 AUDIO_MODEL_SIZE = "large"
 AUDIO_COMPUTE_TYPE = "int8"
@@ -103,4 +105,9 @@ SYSTEM_PROMPT = """Ты — дружелюбный менеджер агентс
 ОБУЧАЮЩИЕ МАТЕРИАЛЫ:
 - У тебя есть доступ к обучающим материалам из группы
 - Отвечай на основе этих материалов, если пользователь в группе
-- Используй информацию из текстов, аудио и видео обучения"""
+- Используй информацию из текстов, аудио и видео обучения
+
+SMS МАТЕРИАЛЫ:
+- У тебя есть доступ к SMS сообщениям из специальной группы
+- Используй их для ответов на вопросы о работе и общении
+- SMS содержат реальные примеры общения с клиентами"""

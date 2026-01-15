@@ -1,5 +1,8 @@
 import aiosqlite
 from config import DB_PATH
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -7,11 +10,10 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
+                first_name TEXT,
                 status TEXT DEFAULT 'new',
-                registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 photos_count INTEGER DEFAULT 0,
-                in_groups INTEGER DEFAULT 0
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -21,7 +23,8 @@ async def init_db():
                 user_id INTEGER,
                 role TEXT,
                 content TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
         
@@ -30,18 +33,20 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 file_id TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS applications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
+                user_id INTEGER UNIQUE,
                 work_hours TEXT,
-                previous_experience TEXT,
+                experience TEXT,
                 status TEXT DEFAULT 'pending',
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
         
@@ -50,8 +55,8 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question TEXT,
                 answer TEXT,
-                category TEXT,
-                usage_count INTEGER DEFAULT 0
+                category TEXT DEFAULT 'general',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -62,14 +67,15 @@ async def init_db():
                 answer TEXT,
                 source TEXT,
                 confidence INTEGER,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
-                value TEXT
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -77,7 +83,8 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS forbidden_topics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 topic TEXT,
-                keywords TEXT
+                keywords TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -85,12 +92,25 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS pending_questions (
                 user_id INTEGER PRIMARY KEY,
                 question TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+        ''')
+        
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS group_messages (
+                message_id INTEGER PRIMARY KEY,
+                message_type TEXT,
+                content TEXT,
+                file_id TEXT,
+                username TEXT,
+                processed INTEGER DEFAULT 0,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         await db.execute('''
-            CREATE TABLE IF NOT EXISTS analysis_texts (
+            CREATE TABLE IF NOT EXISTS analysis_text (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER,
                 text TEXT,
@@ -100,7 +120,7 @@ async def init_db():
         ''')
         
         await db.execute('''
-            CREATE TABLE IF NOT EXISTS analysis_audios (
+            CREATE TABLE IF NOT EXISTS analysis_audio (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER,
                 transcription TEXT,
@@ -110,7 +130,7 @@ async def init_db():
         ''')
         
         await db.execute('''
-            CREATE TABLE IF NOT EXISTS analysis_videos (
+            CREATE TABLE IF NOT EXISTS analysis_video (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER,
                 transcription TEXT,
@@ -120,16 +140,22 @@ async def init_db():
         ''')
         
         await db.execute('''
-            CREATE TABLE IF NOT EXISTS group_messages (
+            CREATE TABLE IF NOT EXISTS analysis_sms (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER UNIQUE,
-                message_type TEXT,
-                content TEXT,
-                file_id TEXT,
-                username TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed INTEGER DEFAULT 0
+                message_id INTEGER,
+                text TEXT,
+                filename TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        await db.commit()   
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS user_groups (
+                user_id INTEGER PRIMARY KEY,
+                in_groups INTEGER DEFAULT 0,
+                last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        await db.commit()
+        logger.info("Database initialized successfully")
