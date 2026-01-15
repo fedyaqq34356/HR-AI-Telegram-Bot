@@ -31,7 +31,7 @@ async def check_forbidden_topics(message):
     return False
 
 async def build_context_prompt(user_id, question, is_in_groups=False):
-    from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos, get_all_analysis_sms
+    from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos
     
     user = await get_user(user_id)
     history = await get_messages(user_id, limit=15)
@@ -63,30 +63,24 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
         texts = await get_all_analysis_texts()
         audios = await get_all_analysis_audios()
         videos = await get_all_analysis_videos()
-        sms_messages = await get_all_analysis_sms()
         
-        if texts or audios or videos or sms_messages:
-            training_materials = "\n\nОБУЧАЮЩИЕ МАТЕРИАЛЫ ИЗ ГРУППЫ:\n"
+        if texts or audios or videos:
+            training_materials = "\n\nОБУЧАЮЩИЕ МАТЕРИАЛЫ:\n"
             
             if texts:
-                training_materials += "\nТЕКСТОВЫЕ МАТЕРИАЛЫ:\n"
+                training_materials += "\nТекстовые материалы:\n"
                 for text in texts[:20]:
                     training_materials += f"{text['text'][:500]}\n...\n"
             
             if audios:
-                training_materials += "\nТРАНСКРИПЦИИ АУДИО:\n"
+                training_materials += "\nАудио материалы (расшифровки):\n"
                 for audio in audios[:10]:
                     training_materials += f"{audio['transcription'][:500]}\n...\n"
             
             if videos:
-                training_materials += "\nТРАНСКРИПЦИИ ВИДЕО:\n"
+                training_materials += "\nВидео материалы (расшифровки):\n"
                 for video in videos[:10]:
                     training_materials += f"{video['transcription'][:500]}\n...\n"
-            
-            if sms_messages:
-                training_materials += "\nSMS СООБЩЕНИЯ (ПРИМЕРЫ ОБЩЕНИЯ С КЛИЕНТАМИ):\n"
-                for sms in sms_messages[:15]:
-                    training_materials += f"{sms['text'][:500]}\n...\n"
     
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
@@ -114,13 +108,12 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 3. Проверь, есть ли точный ответ в FAQ
 4. Проверь обученные ответы
 5. Если девушка ЕСТЬ в группе - используй обучающие материалы для ответа
-6. ВАЖНО: Используй SMS сообщения для понимания как общаться с клиентами в приложении
-7. Если это простая эмоция (супер, класс, ок) - отвечай поддерживающе с confidence 90+
-8. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 80+
-9. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
-10. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы и SMS примеры
-11. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
-12. Ответ должен быть в стиле менеджера Valencia
+6. Если это простая эмоция (супер, класс, ок) - отвечай поддерживающе с confidence 90+
+7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 80+
+8. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
+9. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы
+10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
+11. Ответ должен быть в стиле менеджера Valencia
 """
     
     return context_prompt
