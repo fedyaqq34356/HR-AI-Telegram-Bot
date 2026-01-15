@@ -24,23 +24,48 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 @router.message(Command("admin"))
-async def cmd_admin(message: Message):
+async def cmd_admin(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
+    await state.clear()
     await message.answer("🔧 Админ-панель", reply_markup=admin_main_menu())
+
+@router.message(F.text == "🔙 Отмена")
+async def cancel_action(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    await state.clear()
+    await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
 
 @router.message(F.text == "📝 Изменить приветствие")
 async def edit_welcome_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
+    current_state = await state.get_state()
+    if current_state:
+        await state.clear()
+    
     await state.set_state(AdminStates.editing_welcome)
-    await message.answer("Отправь новый текст приветствия:")
+    
+    from keyboards import cancel_keyboard
+    await message.answer("Отправь новый текст приветствия:", reply_markup=cancel_keyboard())
 
 @router.message(AdminStates.editing_welcome, F.text)
 async def save_new_welcome(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
+        return
+    
+    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
+                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
+                         "📥 Экспорт переписок", "🔙 Отмена"]:
+        await state.clear()
+        if message.text == "🔙 Отмена":
+            await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        else:
+            await message.answer("❌ Изменение приветствия отменено", reply_markup=admin_main_menu())
         return
     
     await set_setting('welcome_message', message.text)
@@ -49,9 +74,11 @@ async def save_new_welcome(message: Message, state: FSMContext):
     logger.info("Welcome message updated by admin")
 
 @router.message(F.text == "📊 Статистика")
-async def show_stats_menu(message: Message):
+async def show_stats_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
+    
+    await state.clear()
     
     stats = await get_stats()
     
@@ -76,41 +103,63 @@ async def show_stats_menu(message: Message):
     await message.answer(stats_text, reply_markup=admin_main_menu())
 
 @router.message(F.text == "💬 Переписки")
-async def show_conversations_menu(message: Message):
+async def show_conversations_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
+    await state.clear()
+    
     users = await get_all_users_list()
+    
+    logger.info(f"Loading conversations, found {len(users)} users")
     
     if not users:
         await message.answer("Пока нет пользователей", reply_markup=admin_main_menu())
         return
     
-    await message.answer(
-        "💬 Выберите пользователя для просмотра переписки:",
-        reply_markup=users_list_keyboard(users)
-    )
+    try:
+        keyboard = users_list_keyboard(users)
+        await message.answer(
+            "💬 Выберите пользователя для просмотра переписки:",
+            reply_markup=keyboard
+        )
+        logger.info(f"Sent conversations menu with {len(users)} users")
+    except Exception as e:
+        logger.error(f"Error showing conversations menu: {e}", exc_info=True)
+        await message.answer(f"Ошибка при загрузке списка: {e}", reply_markup=admin_main_menu())
 
 @router.message(F.text == "✉️ Написать девушке")
-async def write_to_user_menu(message: Message):
+async def write_to_user_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
+    await state.clear()
+    
     users = await get_all_users_list()
+    
+    logger.info(f"Loading users for writing, found {len(users)} users")
     
     if not users:
         await message.answer("Пока нет пользователей", reply_markup=admin_main_menu())
         return
     
-    await message.answer(
-        "✉️ Выберите пользователя для отправки сообщения:",
-        reply_markup=users_list_keyboard(users, action='write')
-    )
+    try:
+        keyboard = users_list_keyboard(users, action='write')
+        await message.answer(
+            "✉️ Выберите пользователя для отправки сообщения:",
+            reply_markup=keyboard
+        )
+        logger.info(f"Sent write menu with {len(users)} users")
+    except Exception as e:
+        logger.error(f"Error showing write menu: {e}", exc_info=True)
+        await message.answer(f"Ошибка при загрузке списка: {e}", reply_markup=admin_main_menu())
 
 @router.message(F.text == "📋 Логи")
-async def send_logs_menu(message: Message):
+async def send_logs_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
+    
+    await state.clear()
     
     try:
         log_file = FSInputFile('bot.log')
@@ -125,9 +174,11 @@ async def send_logs_menu(message: Message):
         await message.answer(f"Ошибка при отправке логов: {e}", reply_markup=admin_main_menu())
 
 @router.message(F.text == "🚫 Запретные темы")
-async def show_forbidden_topics_menu(message: Message):
+async def show_forbidden_topics_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
+    
+    await state.clear()
     
     topics = await get_forbidden_topics_from_db()
     
@@ -149,9 +200,11 @@ async def show_forbidden_topics_menu(message: Message):
     )
 
 @router.message(F.text == "📥 Экспорт переписок")
-async def export_conversations_menu(message: Message):
+async def export_conversations_menu(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
+    
+    await state.clear()
     
     try:
         users = await get_all_users_list()
@@ -204,6 +257,10 @@ async def admin_answer_callback(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
     
+    current_state = await state.get_state()
+    if current_state:
+        await state.clear()
+    
     user_id = int(callback.data.split("_")[1])
     
     logger.info(f"Admin clicked answer button for user {user_id}")
@@ -211,13 +268,21 @@ async def admin_answer_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.answering_question)
     logger.info(f"State set to answering_question for admin, target user: {user_id}")
     
-    await callback.message.answer(f"Напиши ответ для пользователя {user_id} или перешли сообщение/файл:")
+    from keyboards import cancel_keyboard
+    await callback.message.answer(
+        f"Напиши ответ для пользователя {user_id} или перешли сообщение/файл:",
+        reply_markup=cancel_keyboard()
+    )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("write_"))
 async def admin_write_callback(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
+    
+    current_state = await state.get_state()
+    if current_state:
+        await state.clear()
     
     user_id = int(callback.data.split("_")[1])
     
@@ -228,7 +293,11 @@ async def admin_write_callback(callback: CallbackQuery, state: FSMContext):
     user = await get_user(user_id)
     user_display = f"@{user['username']}" if user['username'] else user_id
     
-    await callback.message.answer(f"Напиши сообщение для {user_display} или перешли контент:")
+    from keyboards import cancel_keyboard
+    await callback.message.answer(
+        f"Напиши сообщение для {user_display} или перешли контент:",
+        reply_markup=cancel_keyboard()
+    )
     await callback.answer()
 
 @router.message(AdminStates.answering_question)
@@ -237,6 +306,16 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
     
     if message.from_user.id != ADMIN_ID:
         logger.warning(f"Non-admin user {message.from_user.id} tried to answer question")
+        return
+    
+    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
+                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
+                         "📥 Экспорт переписок", "🔙 Отмена"]:
+        await state.clear()
+        if message.text == "🔙 Отмена":
+            await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        else:
+            await message.answer("❌ Отправка сообщения отменена", reply_markup=admin_main_menu())
         return
     
     logger.info(f"Admin is sending response")
@@ -324,42 +403,69 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
     await state.clear()
 
 @router.callback_query(F.data.startswith("view_conv_"))
-async def view_conversation(callback: CallbackQuery):
+async def view_conversation(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
     
-    user_id = int(callback.data.split("_")[2])
+    await state.clear()
     
-    messages = await get_user_conversations(user_id)
-    user = await get_user(user_id)
+    try:
+        user_id = int(callback.data.split("_")[2])
+        logger.info(f"Admin viewing conversation for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error parsing user_id from callback: {e}")
+        await callback.answer("Ошибка при обработке")
+        return
     
-    if not messages:
+    try:
+        messages = await get_user_conversations(user_id)
+        user = await get_user(user_id)
+        
+        if not user:
+            await callback.message.answer("Пользователь не найден")
+            await callback.answer()
+            return
+        
+        logger.info(f"Found {len(messages)} messages for user {user_id}")
+        
+        if not messages:
+            username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
+            await callback.message.answer(
+                f"У пользователя {username_display} пока нет сообщений",
+                reply_markup=conversation_keyboard(user_id)
+            )
+            await callback.answer()
+            return
+        
+        username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
+        conv_text = f"💬 Переписка с {username_display} (статус: {user['status']}):\n\n"
+        
+        for msg in messages[-20:]:
+            role_emoji = "👤" if msg['role'] == 'user' else "🤖"
+            content_preview = msg['content'][:100] if msg['content'] else ""
+            conv_text += f"{role_emoji} {msg['role']}: {content_preview}\n\n"
+        
+        if len(conv_text) > 4000:
+            conv_text = conv_text[:4000] + "...\n\n(показаны последние сообщения)"
+        
         await callback.message.answer(
-            f"У пользователя @{user['username']} пока нет сообщений",
+            conv_text,
             reply_markup=conversation_keyboard(user_id)
         )
         await callback.answer()
-        return
-    
-    conv_text = f"💬 Переписка с @{user['username']} (статус: {user['status']}):\n\n"
-    
-    for msg in messages[-20:]:
-        role_emoji = "👤" if msg['role'] == 'user' else "🤖"
-        conv_text += f"{role_emoji} {msg['role']}: {msg['content'][:100]}\n\n"
-    
-    if len(conv_text) > 4000:
-        conv_text = conv_text[:4000] + "...\n\n(показаны последние сообщения)"
-    
-    await callback.message.answer(
-        conv_text,
-        reply_markup=conversation_keyboard(user_id)
-    )
-    await callback.answer()
+        logger.info(f"Sent conversation for user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error viewing conversation for user {user_id}: {e}", exc_info=True)
+        await callback.message.answer(f"Ошибка при загрузке переписки: {e}")
+        await callback.answer()
 
 @router.callback_query(F.data == "conversations")
-async def back_to_conversations(callback: CallbackQuery):
+async def back_to_conversations(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
+    
+    await state.clear()
     
     users = await get_all_users_list()
     
@@ -379,8 +485,15 @@ async def add_forbidden_topic_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
     
+    await state.clear()
+    
     await state.set_state(AdminStates.adding_forbidden_topic)
-    await callback.message.answer("Введите название запретной темы (например: политика, религия):")
+    
+    from keyboards import cancel_keyboard
+    await callback.message.answer(
+        "Введите название запретной темы (например: политика, религия):",
+        reply_markup=cancel_keyboard()
+    )
     await callback.answer()
 
 @router.message(AdminStates.adding_forbidden_topic, F.text)
@@ -388,13 +501,38 @@ async def add_forbidden_topic_name(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
+    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
+                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
+                         "📥 Экспорт переписок", "🔙 Отмена"]:
+        await state.clear()
+        if message.text == "🔙 Отмена":
+            await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        else:
+            await message.answer("❌ Добавление темы отменено", reply_markup=admin_main_menu())
+        return
+    
     await state.update_data(topic_name=message.text)
     await state.set_state(AdminStates.adding_forbidden_keywords)
-    await message.answer("Введите ключевые слова через запятую (например: война, выборы, президент):")
+    
+    from keyboards import cancel_keyboard
+    await message.answer(
+        "Введите ключевые слова через запятую (например: война, выборы, президент):",
+        reply_markup=cancel_keyboard()
+    )
 
 @router.message(AdminStates.adding_forbidden_keywords, F.text)
 async def add_forbidden_topic_keywords(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
+        return
+    
+    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
+                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
+                         "📥 Экспорт переписок", "🔙 Отмена"]:
+        await state.clear()
+        if message.text == "🔙 Отмена":
+            await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        else:
+            await message.answer("❌ Добавление темы отменено", reply_markup=admin_main_menu())
         return
     
     data = await state.get_data()
@@ -413,9 +551,11 @@ async def add_forbidden_topic_keywords(message: Message, state: FSMContext):
     logger.info(f"Admin added forbidden topic: {topic_name}")
 
 @router.callback_query(F.data.startswith("delete_topic_"))
-async def delete_forbidden_topic_handler(callback: CallbackQuery):
+async def delete_forbidden_topic_handler(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         return
+    
+    await state.clear()
     
     topic_id = int(callback.data.split("_")[2])
     
