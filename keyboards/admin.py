@@ -38,6 +38,11 @@ def admin_main_menu():
 def admin_panel_keyboard():
     return admin_main_menu()
 
+def cancel_keyboard():
+    builder = ReplyKeyboardBuilder()
+    builder.row(KeyboardButton(text="🔙 Отмена"))
+    return builder.as_markup(resize_keyboard=True)
+
 def forbidden_topics_keyboard(topics):
     builder = InlineKeyboardBuilder()
     for topic in topics:
