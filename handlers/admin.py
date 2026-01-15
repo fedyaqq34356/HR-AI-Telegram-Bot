@@ -10,7 +10,7 @@ from config import ADMIN_ID
 from states import AdminStates, UserStates
 from keyboards import (
     admin_main_menu, users_list_keyboard, conversation_keyboard,
-    forbidden_topics_keyboard
+    forbidden_topics_keyboard, cancel_keyboard
 )
 from database import (
     get_setting, set_setting, save_ai_learning,
@@ -49,8 +49,6 @@ async def edit_welcome_menu(message: Message, state: FSMContext):
         await state.clear()
     
     await state.set_state(AdminStates.editing_welcome)
-    
-    from keyboards import cancel_keyboard
     await message.answer("Отправь новый текст приветствия:", reply_markup=cancel_keyboard())
 
 @router.message(AdminStates.editing_welcome, F.text)
@@ -268,7 +266,6 @@ async def admin_answer_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.answering_question)
     logger.info(f"State set to answering_question for admin, target user: {user_id}")
     
-    from keyboards import cancel_keyboard
     await callback.message.answer(
         f"Напиши ответ для пользователя {user_id} или перешли сообщение/файл:",
         reply_markup=cancel_keyboard()
@@ -293,7 +290,6 @@ async def admin_write_callback(callback: CallbackQuery, state: FSMContext):
     user = await get_user(user_id)
     user_display = f"@{user['username']}" if user['username'] else user_id
     
-    from keyboards import cancel_keyboard
     await callback.message.answer(
         f"Напиши сообщение для {user_display} или перешли контент:",
         reply_markup=cancel_keyboard()
@@ -489,7 +485,6 @@ async def add_forbidden_topic_start(callback: CallbackQuery, state: FSMContext):
     
     await state.set_state(AdminStates.adding_forbidden_topic)
     
-    from keyboards import cancel_keyboard
     await callback.message.answer(
         "Введите название запретной темы (например: политика, религия):",
         reply_markup=cancel_keyboard()
@@ -514,7 +509,6 @@ async def add_forbidden_topic_name(message: Message, state: FSMContext):
     await state.update_data(topic_name=message.text)
     await state.set_state(AdminStates.adding_forbidden_keywords)
     
-    from keyboards import cancel_keyboard
     await message.answer(
         "Введите ключевые слова через запятую (например: война, выборы, президент):",
         reply_markup=cancel_keyboard()
