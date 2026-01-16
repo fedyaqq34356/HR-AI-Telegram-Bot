@@ -13,9 +13,21 @@ async def init_db():
                 first_name TEXT,
                 status TEXT DEFAULT 'new',
                 photos_count INTEGER DEFAULT 0,
+                in_groups INTEGER DEFAULT 0,
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        try:
+            await db.execute('ALTER TABLE users ADD COLUMN last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        except:
+            pass
+        
+        try:
+            await db.execute('ALTER TABLE users ADD COLUMN in_groups INTEGER DEFAULT 0')
+        except:
+            pass
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS messages (
@@ -43,7 +55,7 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER UNIQUE,
                 work_hours TEXT,
-                experience TEXT,
+                previous_experience TEXT,
                 status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
