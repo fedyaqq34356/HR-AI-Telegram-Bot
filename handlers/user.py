@@ -50,7 +50,8 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     if user_id == ADMIN_ID:
         logger.info(f"Admin {user_id} tried to use /start, redirecting to /admin")
         from keyboards import admin_main_menu
-        await message.answer("👋 Привет, администратор!\n\nИспользуй команду /admin для доступа к панели управления", reply_markup=admin_main_menu())
+        admin_text = "👋 Привет, администратор!\n\nИспользуй команду /admin для доступа к панели управления"
+        await message.answer(admin_text, reply_markup=admin_main_menu())
         return
     
     username = message.from_user.username or f"user_{user_id}"
@@ -68,21 +69,28 @@ async def cmd_start(message: Message, state: FSMContext, bot):
         if is_in_group:
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
-            await message.answer("Привет! Вижу ты уже с нами в группе 😊\nЧем могу помочь?")
+            welcome_text = "Привет! Вижу ты уже с нами в группе 😊\nЧем могу помочь?"
+            await message.answer(welcome_text)
+            await save_message(user_id, 'bot', welcome_text)
             logger.info(f"Existing group member {user_id} started bot")
         else:
             await update_user_status(user_id, 'chatting')
             await state.set_state(UserStates.chatting)
             welcome_msg = await get_setting('welcome_message')
             await message.answer(welcome_msg)
+            await save_message(user_id, 'bot', welcome_msg)
             logger.info(f"New user {user_id} (@{username}) started bot")
     else:
         if is_in_group and user['status'] not in ['registered', 'approved']:
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
-            await message.answer("С возвращением! Вижу ты присоединилась к группе 😊")
+            return_text = "С возвращением! Вижу ты присоединилась к группе 😊"
+            await message.answer(return_text)
+            await save_message(user_id, 'bot', return_text)
         else:
-            await message.answer("С возвращением! Чем могу помочь? 😊")
+            return_text = "С возвращением! Чем могу помочь? 😊"
+            await message.answer(return_text)
+            await save_message(user_id, 'bot', return_text)
             status_to_state = {
                 'chatting': UserStates.chatting,
                 'asking_work_hours': UserStates.asking_work_hours,
@@ -115,7 +123,9 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     photos_count = user['photos_count']
     
     if photos_count >= PHOTOS_MAX:
-        await message.answer(f"Максимум {PHOTOS_MAX} фото! У тебя уже загружено достаточно 👍")
+        max_text = f"Максимум {PHOTOS_MAX} фото! У тебя уже загружено достаточно 👍"
+        await message.answer(max_text)
+        await save_message(user_id, 'bot', max_text)
         logger.info(f"User {user_id} tried to send more than {PHOTOS_MAX} photos")
         return
     
@@ -142,13 +152,17 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                 total_photos = current_count + len(photos_in_group)
                 
                 if total_photos > PHOTOS_MAX:
-                    await message.answer(f"Можно загрузить максимум {PHOTOS_MAX} фото! Отправь не больше {PHOTOS_MAX - current_count} фото.")
+                    limit_text = f"Можно загрузить максимум {PHOTOS_MAX} фото! Отправь не больше {PHOTOS_MAX - current_count} фото."
+                    await message.answer(limit_text)
+                    await save_message(user_id, 'bot', limit_text)
                     del photo_group_cache[media_group_id]
                     return
                 
                 for file_id in photos_in_group:
                     await save_photo(user_id, file_id)
                     logger.info(f"Saved photo for user {user_id}")
+                
+                await save_message(user_id, 'user', f'[Отправлено {len(photos_in_group)} фото]')
                 
                 del photo_group_cache[media_group_id]
                 
@@ -157,25 +171,34 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                 
                 if photos_count < PHOTOS_MIN:
                     remaining = PHOTOS_MIN - photos_count
-                    await message.answer(f"Отлично! Нужно ещё минимум {remaining} фото 📸")
+                    remaining_text = f"Отлично! Нужно ещё минимум {remaining} фото 📸"
+                    await message.answer(remaining_text)
+                    await save_message(user_id, 'bot', remaining_text)
                 elif photos_count >= PHOTOS_MIN:
                     await update_user_status(user_id, 'asking_work_hours')
                     await state.set_state(UserStates.asking_work_hours)
-                    await message.answer("Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)")
+                    question_text = "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)"
+                    await message.answer(question_text)
+                    await save_message(user_id, 'bot', question_text)
                     logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
     else:
         file_id = message.photo[-1].file_id
         await save_photo(user_id, file_id)
+        await save_message(user_id, 'user', '[Отправлено фото]')
         photos_count += 1
         logger.info(f"Saved single photo for user {user_id}, new count: {photos_count}")
         
         if photos_count < PHOTOS_MIN:
             remaining = PHOTOS_MIN - photos_count
-            await message.answer(f"Отлично! Нужно ещё минимум {remaining} фото 📸")
+            remaining_text = f"Отлично! Нужно ещё минимум {remaining} фото 📸"
+            await message.answer(remaining_text)
+            await save_message(user_id, 'bot', remaining_text)
         elif photos_count >= PHOTOS_MIN:
             await update_user_status(user_id, 'asking_work_hours')
             await state.set_state(UserStates.asking_work_hours)
-            await message.answer("Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)")
+            question_text = "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)"
+            await message.answer(question_text)
+            await save_message(user_id, 'bot', question_text)
             logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
 
 @router.message(UserStates.asking_work_hours, F.text)
@@ -186,10 +209,16 @@ async def handle_work_hours(message: Message, state: FSMContext):
     if await is_user_rejected(message.from_user.id):
         return
     
+    user_id = message.from_user.id
+    await save_message(user_id, 'user', message.text)
+    
     await state.update_data(work_hours=message.text)
-    await update_user_status(message.from_user.id, 'asking_experience')
+    await update_user_status(user_id, 'asking_experience')
     await state.set_state(UserStates.asking_experience)
-    await message.answer("2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)")
+    
+    question_text = "2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)"
+    await message.answer(question_text)
+    await save_message(user_id, 'bot', question_text)
 
 @router.message(UserStates.asking_experience, F.text)
 async def handle_experience(message: Message, state: FSMContext, bot):
@@ -202,6 +231,8 @@ async def handle_experience(message: Message, state: FSMContext, bot):
         return
     
     from database import create_application, get_photos
+    
+    await save_message(user_id, 'user', message.text)
     
     data = await state.get_data()
     work_hours = data.get('work_hours')
@@ -243,7 +274,9 @@ async def handle_experience(message: Message, state: FSMContext, bot):
         reply_markup=admin_review_keyboard(user_id)
     )
     
-    await message.answer("Спасибо! Твоя заявка отправлена на рассмотрение 😊")
+    response_text = "Спасибо! Твоя заявка отправлена на рассмотрение 😊"
+    await message.answer(response_text)
+    await save_message(user_id, 'bot', response_text)
     logger.info(f"Application submitted for user {user_id}")
 
 @router.message(UserStates.helping_registration, F.text)
@@ -292,7 +325,9 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        await message.answer("Передаю твой вопрос менеджеру, скоро получишь ответ! 😊")
+        escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
+        await message.answer(escalate_text)
+        await save_message(user_id, 'bot', escalate_text)
         logger.info(f"Registration question escalated to admin for user {user_id}")
     else:
         answer = ai_result['answer']
@@ -337,7 +372,9 @@ async def handle_waiting_admin(message: Message, bot):
     
     await save_message(user_id, 'user', question)
     
-    await message.answer("Твой вопрос передан менеджеру, скоро тебе ответят! 😊")
+    wait_text = "Твой вопрос передан менеджеру, скоро тебе ответят! 😊"
+    await message.answer(wait_text)
+    await save_message(user_id, 'bot', wait_text)
     
     user = await get_user(user_id)
     user_display = get_user_display_name({
@@ -406,7 +443,9 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        await message.answer("Передаю твой вопрос менеджеру, скоро получишь ответ! 😊")
+        escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
+        await message.answer(escalate_text)
+        await save_message(user_id, 'bot', escalate_text)
         logger.info(f"Question escalated to admin for registered user {user_id}")
     else:
         answer = ai_result['answer']
@@ -490,7 +529,9 @@ async def handle_question(message: Message, state: FSMContext, bot):
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        await message.answer("Передаю твой вопрос менеджеру, скоро получишь ответ! 😊")
+        escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
+        await message.answer(escalate_text)
+        await save_message(user_id, 'bot', escalate_text)
         logger.info(f"Question escalated to admin for user {user_id}")
     else:
         answer = ai_result['answer']
