@@ -19,15 +19,17 @@ async def init_db():
             )
         ''')
         
-        try:
-            await db.execute('ALTER TABLE users ADD COLUMN last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
-        except:
-            pass
+        cursor = await db.execute("PRAGMA table_info(users)")
+        columns = await cursor.fetchall()
+        column_names = [col[1] for col in columns]
         
-        try:
+        if 'last_activity' not in column_names:
+            await db.execute('ALTER TABLE users ADD COLUMN last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+            logger.info("Added last_activity column")
+        
+        if 'in_groups' not in column_names:
             await db.execute('ALTER TABLE users ADD COLUMN in_groups INTEGER DEFAULT 0')
-        except:
-            pass
+            logger.info("Added in_groups column")
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS messages (
