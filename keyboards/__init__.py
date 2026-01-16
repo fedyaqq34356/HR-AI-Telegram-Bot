@@ -8,6 +8,7 @@ from .admin import (
     conversation_keyboard,
     cancel_keyboard
 )
+from .user import groups_keyboard
 
 __all__ = [
     'admin_review_keyboard',
@@ -17,5 +18,6 @@ __all__ = [
     'forbidden_topics_keyboard',
     'users_list_keyboard',
     'conversation_keyboard',
-    'cancel_keyboard'
+    'cancel_keyboard',
+    'groups_keyboard'
 ]
