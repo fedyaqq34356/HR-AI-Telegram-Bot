@@ -22,7 +22,7 @@ AUDIO_MODEL_SIZE = "medium"
 AUDIO_COMPUTE_TYPE = "int8"
 AUDIO_DEVICE = "cpu"
 AUDIO_TEMP_WAV = "temp_audio.wav"
-AUDIO_TRANSCRIPTION_TIMEOUT = 300
+AUDIO_TRANSCRIPTION_TIMEOUT = 800
 
 SUPPORTED_AUDIO_FORMATS = [
     '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma', '.opus', '.alac', '.ape', '.aiff', '.amr', '.oga', '.spx', '.tta', '.wv', '.mka'
