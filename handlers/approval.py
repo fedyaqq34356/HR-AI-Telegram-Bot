@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 
 from states import UserStates
-from database import update_application_status, update_user_status, get_setting
+from database import update_application_status, update_user_status, get_setting, save_message
 from config import GROUP_ID
 
 router = Router()
@@ -32,6 +32,7 @@ async def approve_application(callback: CallbackQuery, bot, state: FSMContext):
 https://livegirl.me/#/mobilepage"""
     
     await bot.send_photo(user_id, screenshot_file, caption=part1_text)
+    await save_message(user_id, 'bot', f'[Фото с инструкцией]\n{part1_text}')
     
     part2_text = """📰 Регистрация
 1. Открываешь приложение и нажимаешь «Регистрация».
@@ -53,6 +54,7 @@ Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 6. Я отправляю заявку в офис. На следующий будний день твой аккаунт активируют."""
     
     await bot.send_message(user_id, part2_text)
+    await save_message(user_id, 'bot', part2_text)
     
     logger.info(f"Registration instructions sent, user {user_id} remains in helping_registration")
     
@@ -77,6 +79,7 @@ async def reject_application(callback: CallbackQuery, bot, state: FSMContext):
     
     rejection_msg = await get_setting('rejection_message')
     await bot.send_message(user_id, rejection_msg)
+    await save_message(user_id, 'bot', rejection_msg)
     
     await callback.message.edit_text(
         callback.message.text + "\n\n❌ ОТКЛОНЕНО"
