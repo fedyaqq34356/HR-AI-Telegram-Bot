@@ -434,22 +434,37 @@ async def view_conversation(callback: CallbackQuery, state: FSMContext):
             return
         
         username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
-        conv_text = f"💬 Переписка с {username_display} (статус: {user['status']}):\n\n"
         
-        for msg in messages[-20:]:
+        conv_parts = []
+        current_part = f"💬 Переписка с {username_display} (статус: {user['status']}):\n\n"
+        
+        for msg in messages:
             role_emoji = "👤" if msg['role'] == 'user' else "🤖"
-            content_preview = msg['content'][:100] if msg['content'] else ""
-            conv_text += f"{role_emoji} {msg['role']}: {content_preview}\n\n"
+            content = msg['content'] if msg['content'] else ""
+            msg_text = f"{role_emoji} {msg['role']}: {content}\n\n"
+            
+            if len(current_part) + len(msg_text) > 3900:
+                conv_parts.append(current_part)
+                current_part = msg_text
+            else:
+                current_part += msg_text
         
-        if len(conv_text) > 4000:
-            conv_text = conv_text[:4000] + "...\n\n(показаны последние сообщения)"
+        if current_part:
+            conv_parts.append(current_part)
+        
+        for i, part in enumerate(conv_parts):
+            if i == 0:
+                await callback.message.answer(part)
+            else:
+                await callback.message.answer(f"📄 Продолжение ({i+1}/{len(conv_parts)}):\n\n{part}")
         
         await callback.message.answer(
-            conv_text,
+            f"📊 Всего сообщений: {len(messages)}",
             reply_markup=conversation_keyboard(user_id)
         )
+        
         await callback.answer()
-        logger.info(f"Sent conversation for user {user_id}")
+        logger.info(f"Sent conversation for user {user_id} in {len(conv_parts)} parts")
         
     except Exception as e:
         logger.error(f"Error viewing conversation for user {user_id}: {e}", exc_info=True)
