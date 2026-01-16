@@ -114,6 +114,12 @@ async def cmd_start_analysis(message: Message, bot):
                 
                 try:
                     file = await bot.get_file(msg['file_id'])
+                    
+                    if file.file_size and file.file_size > 20 * 1024 * 1024:
+                        logger.warning(f"Audio {msg['message_id']} is too big ({file.file_size} bytes), skipping")
+                        await mark_message_processed(msg['message_id'])
+                        continue
+                    
                     await bot.download_file(file.file_path, temp_filename)
                     
                     transcription = await transcribe_audio(temp_filename)
@@ -134,11 +140,8 @@ async def cmd_start_analysis(message: Message, bot):
                         await message.answer(f"🎤 Обработано аудио: {audio_count}")
                     
                 except Exception as e:
-                    if "file is too big" in str(e):
-                        logger.warning(f"Audio {msg['message_id']} is too big, skipping")
-                        await mark_message_processed(msg['message_id'])
-                    else:
-                        logger.error(f"Error transcribing audio {msg['message_id']}: {e}")
+                    logger.error(f"Error transcribing audio {msg['message_id']}: {e}")
+                    await mark_message_processed(msg['message_id'])
                 finally:
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
@@ -153,6 +156,12 @@ async def cmd_start_analysis(message: Message, bot):
                 
                 try:
                     file = await bot.get_file(msg['file_id'])
+                    
+                    if file.file_size and file.file_size > 20 * 1024 * 1024:
+                        logger.warning(f"Video {msg['message_id']} is too big ({file.file_size} bytes), skipping")
+                        await mark_message_processed(msg['message_id'])
+                        continue
+                    
                     await bot.download_file(file.file_path, temp_filename)
                     
                     transcription = await transcribe_audio(temp_filename)
@@ -173,11 +182,8 @@ async def cmd_start_analysis(message: Message, bot):
                         await message.answer(f"🎥 Обработано видео: {video_count}")
                     
                 except Exception as e:
-                    if "file is too big" in str(e):
-                        logger.warning(f"Video {msg['message_id']} is too big, skipping")
-                        await mark_message_processed(msg['message_id'])
-                    else:
-                        logger.error(f"Error transcribing video {msg['message_id']}: {e}")
+                    logger.error(f"Error transcribing video {msg['message_id']}: {e}")
+                    await mark_message_processed(msg['message_id'])
                 finally:
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
