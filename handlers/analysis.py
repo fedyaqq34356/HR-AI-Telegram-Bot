@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import ADMIN_ID, GROUP_ID, SMS_GROUP_ID, ANALYSIS_TEXT_DIR, ANALYSIS_AUDIO_DIR, ANALYSIS_VIDEO_DIR
+from config import ADMIN_ID, ANALYSIS_TEXT_DIR, ANALYSIS_AUDIO_DIR, ANALYSIS_VIDEO_DIR
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -15,11 +15,7 @@ for directory in [ANALYSIS_TEXT_DIR, ANALYSIS_AUDIO_DIR, ANALYSIS_VIDEO_DIR]:
 
 @router.message(F.text, F.chat.type.in_({'group', 'supergroup', 'channel'}))
 async def capture_group_text(message: Message):
-    logger.info(f"Received text from chat_id={message.chat.id}, type={message.chat.type}, GROUP_ID={GROUP_ID}, SMS_GROUP_ID={SMS_GROUP_ID}")
-    
-    if message.chat.id not in [GROUP_ID, SMS_GROUP_ID]:
-        logger.info(f"Skipping message from chat {message.chat.id}")
-        return
+    logger.info(f"Received text from chat_id={message.chat.id}, type={message.chat.type}")
     
     if message.text and message.text.startswith('/'):
         logger.info(f"Skipping command: {message.text}")
@@ -34,14 +30,11 @@ async def capture_group_text(message: Message):
         content=message.text,
         username=username
     )
-    logger.info(f"✅ Captured text message {message.message_id} from group")
+    logger.info(f"✅ Captured text message {message.message_id} from group {message.chat.id}")
 
 @router.message(F.voice | F.audio, F.chat.type.in_({'group', 'supergroup', 'channel'}))
 async def capture_group_audio(message: Message):
     logger.info(f"Received audio from chat_id={message.chat.id}, type={message.chat.type}")
-    
-    if message.chat.id not in [GROUP_ID, SMS_GROUP_ID]:
-        return
     
     from database.group_messages import save_group_message
     username = message.from_user.username if message.from_user else 'Unknown'
@@ -52,14 +45,11 @@ async def capture_group_audio(message: Message):
         file_id=audio.file_id,
         username=username
     )
-    logger.info(f"✅ Captured audio message {message.message_id} from group")
+    logger.info(f"✅ Captured audio message {message.message_id} from group {message.chat.id}")
 
 @router.message(F.video | F.video_note, F.chat.type.in_({'group', 'supergroup', 'channel'}))
 async def capture_group_video(message: Message):
     logger.info(f"Received video from chat_id={message.chat.id}, type={message.chat.type}")
-    
-    if message.chat.id not in [GROUP_ID, SMS_GROUP_ID]:
-        return
     
     from database.group_messages import save_group_message
     username = message.from_user.username if message.from_user else 'Unknown'
@@ -70,7 +60,7 @@ async def capture_group_video(message: Message):
         file_id=video.file_id,
         username=username
     )
-    logger.info(f"✅ Captured video message {message.message_id} from group")
+    logger.info(f"✅ Captured video message {message.message_id} from group {message.chat.id}")
 
 @router.message(Command("startanal"))
 async def cmd_start_analysis(message: Message, bot):
@@ -207,7 +197,5 @@ async def cmd_chat_id(message: Message):
         f"Chat ID: `{message.chat.id}`\n"
         f"Chat Type: {message.chat.type}\n"
         f"Chat Title: {message.chat.title or 'N/A'}\n"
-        f"Your ID: {message.from_user.id}\n\n"
-        f"GROUP_ID в config: {GROUP_ID}\n"
-        f"SMS_GROUP_ID в config: {SMS_GROUP_ID}"
+        f"Your ID: {message.from_user.id}"
     )
