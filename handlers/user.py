@@ -11,7 +11,7 @@ from keyboards import admin_answer_keyboard
 from database import (
     get_user, create_user, update_user_status, save_message,
     save_photo, get_setting, save_ai_learning, save_pending_question,
-    is_user_in_groups, add_user_to_groups
+    is_user_in_groups, add_user_to_groups, unhide_user_on_activity
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
@@ -48,11 +48,12 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
     
     if user_id == ADMIN_ID:
-        logger.info(f"Admin {user_id} tried to use /start, redirecting to /admin")
         from keyboards import admin_main_menu
         admin_text = "👋 Привет, администратор!\n\nИспользуй команду /admin для доступа к панели управления"
         await message.answer(admin_text, reply_markup=admin_main_menu())
         return
+    
+    await unhide_user_on_activity(user_id)
     
     username = message.from_user.username or f"user_{user_id}"
     user = await get_user(user_id)
@@ -60,7 +61,6 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     is_in_group = await check_group_membership(bot, user_id)
     
     if user and user['status'] == 'rejected':
-        logger.info(f"Rejected user {user_id} tried to start bot")
         return
     
     if not user:
@@ -72,14 +72,12 @@ async def cmd_start(message: Message, state: FSMContext, bot):
             welcome_text = "Привет! Вижу ты уже с нами в группе 😊\nЧем могу помочь?"
             await message.answer(welcome_text)
             await save_message(user_id, 'bot', welcome_text)
-            logger.info(f"Existing group member {user_id} started bot")
         else:
             await update_user_status(user_id, 'chatting')
             await state.set_state(UserStates.chatting)
             welcome_msg = await get_setting('welcome_message')
             await message.answer(welcome_msg)
             await save_message(user_id, 'bot', welcome_msg)
-            logger.info(f"New user {user_id} (@{username}) started bot")
     else:
         if is_in_group and user['status'] not in ['registered', 'approved']:
             await update_user_status(user_id, 'registered')
@@ -114,10 +112,11 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     if await is_user_rejected(user_id):
         return
     
+    await unhide_user_on_activity(user_id)
+    
     user = await get_user(user_id)
     
     if user['status'] not in ['new', 'chatting', 'waiting_photos']:
-        logger.info(f"User {user_id} sent photo but not in initial states, status: {user['status']}")
         return
     
     photos_count = user['photos_count']
@@ -126,7 +125,6 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         max_text = f"Максимум {PHOTOS_MAX} фото! У тебя уже загружено достаточно 👍"
         await message.answer(max_text)
         await save_message(user_id, 'bot', max_text)
-        logger.info(f"User {user_id} tried to send more than {PHOTOS_MAX} photos")
         return
     
     media_group_id = message.media_group_id
@@ -140,7 +138,6 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         
         if not photo_group_cache[media_group_id]['processed']:
             photo_group_cache[media_group_id]['photos'].append(message.photo[-1].file_id)
-            logger.info(f"Added photo to group {media_group_id}, total: {len(photo_group_cache[media_group_id]['photos'])}")
             
             await asyncio.sleep(1.0)
             
@@ -160,7 +157,6 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                 
                 for file_id in photos_in_group:
                     await save_photo(user_id, file_id)
-                    logger.info(f"Saved photo for user {user_id}")
                 
                 await save_message(user_id, 'user', f'[Отправлено {len(photos_in_group)} фото]')
                 
@@ -180,13 +176,11 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                     question_text = "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)"
                     await message.answer(question_text)
                     await save_message(user_id, 'bot', question_text)
-                    logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
     else:
         file_id = message.photo[-1].file_id
         await save_photo(user_id, file_id)
         await save_message(user_id, 'user', '[Отправлено фото]')
         photos_count += 1
-        logger.info(f"Saved single photo for user {user_id}, new count: {photos_count}")
         
         if photos_count < PHOTOS_MIN:
             remaining = PHOTOS_MIN - photos_count
@@ -199,7 +193,6 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
             question_text = "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)"
             await message.answer(question_text)
             await save_message(user_id, 'bot', question_text)
-            logger.info(f"User {user_id} uploaded {photos_count} photos, moving to work hours question")
 
 @router.message(UserStates.asking_work_hours, F.text)
 async def handle_work_hours(message: Message, state: FSMContext):
@@ -210,6 +203,7 @@ async def handle_work_hours(message: Message, state: FSMContext):
         return
     
     user_id = message.from_user.id
+    await unhide_user_on_activity(user_id)
     await save_message(user_id, 'user', message.text)
     
     await state.update_data(work_hours=message.text)
@@ -232,6 +226,7 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     
     from database import create_application, get_photos
     
+    await unhide_user_on_activity(user_id)
     await save_message(user_id, 'user', message.text)
     
     data = await state.get_data()
@@ -277,7 +272,6 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     response_text = "Спасибо! Твоя заявка отправлена на рассмотрение 😊"
     await message.answer(response_text)
     await save_message(user_id, 'bot', response_text)
-    logger.info(f"Application submitted for user {user_id}")
 
 @router.message(UserStates.helping_registration, F.text)
 async def handle_registration_questions(message: Message, state: FSMContext, bot):
@@ -289,6 +283,8 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
     if await is_user_rejected(user_id):
         return
     
+    await unhide_user_on_activity(user_id)
+    
     question = message.text
     
     if is_review_request(question):
@@ -296,7 +292,6 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
         return
     
     await save_message(user_id, 'user', question)
-    logger.info(f"Registration question from user {user_id}: {question[:50]}...")
     
     await bot.send_chat_action(user_id, "typing")
     
@@ -328,13 +323,11 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
         escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
         await message.answer(escalate_text)
         await save_message(user_id, 'bot', escalate_text)
-        logger.info(f"Registration question escalated to admin for user {user_id}")
     else:
         answer = ai_result['answer']
         await message.answer(answer)
         await save_message(user_id, 'bot', answer)
         await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
-        logger.info(f"Auto-answered registration question for user {user_id} with confidence {ai_result['confidence']}")
 
 @router.message(UserStates.helping_registration, F.photo)
 async def handle_photo_during_registration(message: Message, state: FSMContext):
@@ -346,7 +339,7 @@ async def handle_photo_during_registration(message: Message, state: FSMContext):
     if await is_user_rejected(user_id):
         return
     
-    logger.info(f"User {user_id} sent photo during helping_registration (screenshot with ID)")
+    await unhide_user_on_activity(user_id)
     
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
@@ -363,6 +356,8 @@ async def handle_waiting_admin(message: Message, bot):
     
     if await is_user_rejected(user_id):
         return
+    
+    await unhide_user_on_activity(user_id)
     
     question = message.text
     
@@ -388,7 +383,6 @@ async def handle_waiting_admin(message: Message, bot):
         f"❓ Дополнительный вопрос от {user_display}:\n\n{question}",
         reply_markup=admin_answer_keyboard(user_id)
     )
-    logger.info(f"Additional question from waiting user {user_id}: {question[:50]}...")
 
 @router.message(UserStates.registered, F.text)
 async def handle_registered_user(message: Message, state: FSMContext, bot):
@@ -400,6 +394,8 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
     if await is_user_rejected(user_id):
         return
     
+    await unhide_user_on_activity(user_id)
+    
     question = message.text
     
     if is_review_request(question):
@@ -407,7 +403,6 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         return
     
     await save_message(user_id, 'user', question)
-    logger.info(f"Question from registered user {user_id}: {question[:50]}...")
     
     in_groups = await is_user_in_groups(user_id)
     if not in_groups:
@@ -446,13 +441,11 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
         await message.answer(escalate_text)
         await save_message(user_id, 'bot', escalate_text)
-        logger.info(f"Question escalated to admin for registered user {user_id}")
     else:
         answer = ai_result['answer']
         await message.answer(answer)
         await save_message(user_id, 'bot', answer)
         await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
-        logger.info(f"Auto-answered for registered user {user_id} with confidence {ai_result['confidence']}")
 
 @router.message(UserStates.registered, F.photo)
 async def handle_screenshot_from_registered(message: Message, state: FSMContext):
@@ -464,7 +457,7 @@ async def handle_screenshot_from_registered(message: Message, state: FSMContext)
     if await is_user_rejected(user_id):
         return
     
-    logger.info(f"User {user_id} sent photo during registered state, processing as screenshot")
+    await unhide_user_on_activity(user_id)
     
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
@@ -480,8 +473,9 @@ async def handle_question(message: Message, state: FSMContext, bot):
         return
     
     if await is_user_rejected(user_id):
-        logger.info(f"Rejected user {user_id} tried to send message")
         return
+    
+    await unhide_user_on_activity(user_id)
     
     question = message.text
     
@@ -489,28 +483,20 @@ async def handle_question(message: Message, state: FSMContext, bot):
         await send_reviews(message)
         return
     
-    logger.info(f"Question from user {user_id}: {question[:50]}...")
     await save_message(user_id, 'user', question)
-    logger.info(f"Message saved for user {user_id}")
     
     await bot.send_chat_action(user_id, "typing")
-    logger.info(f"Typing action sent for user {user_id}")
     
     import time
     start_time = time.time()
     
-    logger.info(f"Calling AI for user {user_id}")
     ai_result = await get_ai_response_with_retry(user_id, question)
-    logger.info(f"AI responded for user {user_id} in {time.time() - start_time:.2f}s")
     
     elapsed = time.time() - start_time
     if elapsed < 1:
-        wait_time = 1 - elapsed
-        logger.info(f"Adding {wait_time:.2f}s delay for naturalness")
-        await asyncio.sleep(wait_time)
+        await asyncio.sleep(1 - elapsed)
     
     if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
-        logger.info(f"Escalating to admin for user {user_id}, confidence: {ai_result['confidence']}")
         await update_user_status(user_id, 'waiting_admin')
         await state.set_state(UserStates.waiting_admin)
         
@@ -532,14 +518,11 @@ async def handle_question(message: Message, state: FSMContext, bot):
         escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
         await message.answer(escalate_text)
         await save_message(user_id, 'bot', escalate_text)
-        logger.info(f"Question escalated to admin for user {user_id}")
     else:
         answer = ai_result['answer']
-        logger.info(f"Sending auto-answer to user {user_id}: {answer[:50]}...")
         await message.answer(answer)
         await save_message(user_id, 'bot', answer)
         await save_ai_learning(question, answer, 'auto', ai_result['confidence'])
-        logger.info(f"Auto-answered for user {user_id} with confidence {ai_result['confidence']}")
 
 @router.message(F.text)
 async def block_rejected_users(message: Message):
@@ -547,5 +530,4 @@ async def block_rejected_users(message: Message):
         return
     
     if await is_user_rejected(message.from_user.id):
-        logger.info(f"Blocked message from rejected user {message.from_user.id}")
         return

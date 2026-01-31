@@ -10,16 +10,18 @@ from aiogram.fsm.context import FSMContext
 from config import ADMIN_ID
 from states import AdminStates, UserStates
 from keyboards import (
-    admin_main_menu, users_list_keyboard, conversation_keyboard,
+    admin_main_menu, conversation_keyboard,
     forbidden_topics_keyboard, cancel_keyboard, conversations_action_keyboard,
     delete_conversation_confirm_keyboard, group_links_keyboard
 )
+from keyboards.admin import users_list_keyboard
 from database import (
     get_setting, set_setting, save_ai_learning,
     get_pending_question, delete_pending_question, get_stats,
     get_user_conversations, get_all_users_list, get_user, get_users_count,
     get_forbidden_topics_from_db, add_forbidden_topic, delete_forbidden_topic,
-    save_message, update_user_status, delete_user_conversation
+    save_message, update_user_status, delete_user_conversation,
+    hide_user, unhide_user
 )
 
 router = Router()
@@ -229,31 +231,23 @@ async def show_conversations_list(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     
-    total_users = await get_users_count()
+    total_users = await get_users_count(show_hidden=False)
     per_page = 10
-    total_pages = math.ceil(total_users / per_page)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=1, per_page=per_page)
-    
-    logger.info(f"Loading conversations, found {len(users)} users on page 1")
+    users = await get_all_users_list(page=1, per_page=per_page, show_hidden=False)
     
     if not users:
-        await callback.message.edit_text("Пока нет пользователей")
+        await callback.message.edit_text("Нет активных пользователей в списке")
         await callback.answer()
         return
     
-    try:
-        keyboard = users_list_keyboard(users, action='view', page=1, total_pages=total_pages)
-        await callback.message.edit_text(
-            f"💬 Выберите пользователя для просмотра переписки (Страница 1/{total_pages}):",
-            reply_markup=keyboard
-        )
-        logger.info(f"Sent conversations menu with {len(users)} users")
-        await callback.answer()
-    except Exception as e:
-        logger.error(f"Error showing conversations menu: {e}", exc_info=True)
-        await callback.message.edit_text(f"Ошибка при загрузке списка: {e}")
-        await callback.answer()
+    keyboard = await users_list_keyboard(users, action='view', page=1, total_pages=total_pages)
+    await callback.message.edit_text(
+        f"💬 Выберите пользователя для просмотра переписки (Страница 1/{total_pages}):",
+        reply_markup=keyboard
+    )
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("page_view_"))
 async def paginate_conversations(callback: CallbackQuery, state: FSMContext):
@@ -262,12 +256,12 @@ async def paginate_conversations(callback: CallbackQuery, state: FSMContext):
     
     page = int(callback.data.split("_")[2])
     per_page = 10
-    total_users = await get_users_count()
-    total_pages = math.ceil(total_users / per_page)
+    total_users = await get_users_count(show_hidden=False)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=page, per_page=per_page)
+    users = await get_all_users_list(page=page, per_page=per_page, show_hidden=False)
     
-    keyboard = users_list_keyboard(users, action='view', page=page, total_pages=total_pages)
+    keyboard = await users_list_keyboard(users, action='view', page=page, total_pages=total_pages)
     await callback.message.edit_text(
         f"💬 Выберите пользователя для просмотра переписки (Страница {page}/{total_pages}):",
         reply_markup=keyboard
@@ -281,18 +275,18 @@ async def show_delete_conversations_list(callback: CallbackQuery, state: FSMCont
     
     await state.clear()
     
-    total_users = await get_users_count()
+    total_users = await get_users_count(show_hidden=False)
     per_page = 10
-    total_pages = math.ceil(total_users / per_page)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=1, per_page=per_page)
+    users = await get_all_users_list(page=1, per_page=per_page, show_hidden=False)
     
     if not users:
-        await callback.message.edit_text("Пока нет пользователей")
+        await callback.message.edit_text("Нет активных пользователей в списке")
         await callback.answer()
         return
     
-    keyboard = users_list_keyboard(users, action='delete', page=1, total_pages=total_pages)
+    keyboard = await users_list_keyboard(users, action='delete', page=1, total_pages=total_pages)
     await callback.message.edit_text(
         f"🗑 Выберите пользователя для удаления переписки (Страница 1/{total_pages}):",
         reply_markup=keyboard
@@ -306,17 +300,18 @@ async def paginate_delete_conversations(callback: CallbackQuery, state: FSMConte
     
     page = int(callback.data.split("_")[2])
     per_page = 10
-    total_users = await get_users_count()
-    total_pages = math.ceil(total_users / per_page)
+    total_users = await get_users_count(show_hidden=False)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=page, per_page=per_page)
+    users = await get_all_users_list(page=page, per_page=per_page, show_hidden=False)
     
-    keyboard = users_list_keyboard(users, action='delete', page=page, total_pages=total_pages)
+    keyboard = await users_list_keyboard(users, action='delete', page=page, total_pages=total_pages)
     await callback.message.edit_text(
         f"🗑 Выберите пользователя для удаления переписки (Страница {page}/{total_pages}):",
         reply_markup=keyboard
     )
     await callback.answer()
+
 @router.callback_query(F.data.startswith("delete_conv_"))
 async def delete_conversation_confirm(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
@@ -345,13 +340,30 @@ async def confirm_delete_conversation(callback: CallbackQuery, state: FSMContext
     user_id = int(callback.data.split("_")[2])
     
     await delete_user_conversation(user_id)
+    await hide_user(user_id)
     
     user = await get_user(user_id)
     username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
     
-    await callback.message.edit_text(f"✅ Переписка с {username_display} удалена")
+    await callback.message.edit_text(f"✅ Переписка с {username_display} удалена и пользователь скрыт из списка")
     await callback.answer("Удалено")
-    logger.info(f"Admin deleted conversation with user {user_id}")
+    logger.info(f"Admin deleted conversation and hid user {user_id}")
+
+@router.callback_query(F.data.startswith("hide_user_"))
+async def hide_user_handler(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    user_id = int(callback.data.split("_")[2])
+    
+    await hide_user(user_id)
+    
+    user = await get_user(user_id)
+    username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
+    
+    await callback.message.edit_text(f"✅ {username_display} скрыт из списка. Появится снова когда написать")
+    await callback.answer("Скрыт")
+    logger.info(f"Admin manually hid user {user_id}")
 
 @router.message(F.text == "✉️ Написать девушке")
 async def write_to_user_menu(message: Message, state: FSMContext):
@@ -360,28 +372,21 @@ async def write_to_user_menu(message: Message, state: FSMContext):
     
     await state.clear()
     
-    total_users = await get_users_count()
+    total_users = await get_users_count(show_hidden=False)
     per_page = 10
-    total_pages = math.ceil(total_users / per_page)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=1, per_page=per_page)
-    
-    logger.info(f"Loading users for writing, found {len(users)} users")
+    users = await get_all_users_list(page=1, per_page=per_page, show_hidden=False)
     
     if not users:
-        await message.answer("Пока нет пользователей", reply_markup=admin_main_menu())
+        await message.answer("Нет активных пользователей в списке", reply_markup=admin_main_menu())
         return
     
-    try:
-        keyboard = users_list_keyboard(users, action='write', page=1, total_pages=total_pages)
-        await message.answer(
-            f"✉️ Выберите пользователя для отправки сообщения (Страница 1/{total_pages}):",
-            reply_markup=keyboard
-        )
-        logger.info(f"Sent write menu with {len(users)} users")
-    except Exception as e:
-        logger.error(f"Error showing write menu: {e}", exc_info=True)
-        await message.answer(f"Ошибка при загрузке списка: {e}", reply_markup=admin_main_menu())
+    keyboard = await users_list_keyboard(users, action='write', page=1, total_pages=total_pages)
+    await message.answer(
+        f"✉️ Выберите пользователя для отправки сообщения (Страница 1/{total_pages}):",
+        reply_markup=keyboard
+    )
 
 @router.callback_query(F.data.startswith("page_write_"))
 async def paginate_write_users(callback: CallbackQuery, state: FSMContext):
@@ -390,12 +395,12 @@ async def paginate_write_users(callback: CallbackQuery, state: FSMContext):
     
     page = int(callback.data.split("_")[2])
     per_page = 10
-    total_users = await get_users_count()
-    total_pages = math.ceil(total_users / per_page)
+    total_users = await get_users_count(show_hidden=False)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=page, per_page=per_page)
+    users = await get_all_users_list(page=page, per_page=per_page, show_hidden=False)
     
-    keyboard = users_list_keyboard(users, action='write', page=page, total_pages=total_pages)
+    keyboard = await users_list_keyboard(users, action='write', page=page, total_pages=total_pages)
     await callback.message.edit_text(
         f"✉️ Выберите пользователя для отправки сообщения (Страница {page}/{total_pages}):",
         reply_markup=keyboard
@@ -455,13 +460,13 @@ async def export_conversations_menu(message: Message, state: FSMContext):
     await state.clear()
     
     try:
-        total_users = await get_users_count()
+        total_users = await get_users_count(show_hidden=True)
         all_users = []
         per_page = 50
         total_pages = math.ceil(total_users / per_page)
         
         for page in range(1, total_pages + 1):
-            users = await get_all_users_list(page=page, per_page=per_page)
+            users = await get_all_users_list(page=page, per_page=per_page, show_hidden=True)
             all_users.extend(users)
         
         if not all_users:
@@ -518,10 +523,8 @@ async def admin_answer_callback(callback: CallbackQuery, state: FSMContext):
     
     user_id = int(callback.data.split("_")[1])
     
-    logger.info(f"Admin clicked answer button for user {user_id}")
     await state.update_data(answering_user_id=user_id)
     await state.set_state(AdminStates.answering_question)
-    logger.info(f"State set to answering_question for admin, target user: {user_id}")
     
     await callback.message.answer(
         f"Напиши ответ для пользователя {user_id} или перешли сообщение/файл:",
@@ -540,7 +543,6 @@ async def admin_write_callback(callback: CallbackQuery, state: FSMContext):
     
     user_id = int(callback.data.split("_")[1])
     
-    logger.info(f"Admin wants to write to user {user_id}")
     await state.update_data(writing_user_id=user_id)
     await state.set_state(AdminStates.answering_question)
     
@@ -558,7 +560,6 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
     from aiogram.fsm.storage.base import StorageKey
     
     if message.from_user.id != ADMIN_ID:
-        logger.warning(f"Non-admin user {message.from_user.id} tried to answer question")
         return
     
     if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
@@ -571,10 +572,8 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
             await message.answer("❌ Отправка сообщения отменена", reply_markup=admin_main_menu())
         return
     
-    logger.info(f"Admin is sending response")
     data = await state.get_data()
     user_id = data.get('answering_user_id') or data.get('writing_user_id')
-    logger.info(f"Target user_id from state: {user_id}")
     
     if not user_id:
         await message.answer("❌ Ошибка: не найден пользователь для ответа", reply_markup=admin_main_menu())
@@ -592,43 +591,36 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
             if question:
                 await save_ai_learning(question, answer, 'admin', 100)
                 await delete_pending_question(user_id)
-                logger.info(f"Admin answered question for user {user_id}")
         
         elif message.photo:
             caption = message.caption if message.caption else ""
             await bot.send_photo(user_id, message.photo[-1].file_id, caption=caption)
             if caption:
                 await save_message(user_id, 'bot', f"[Фото] {caption}")
-            logger.info(f"Admin sent photo to user {user_id}")
         
         elif message.document:
             caption = message.caption if message.caption else ""
             await bot.send_document(user_id, message.document.file_id, caption=caption)
             if caption:
                 await save_message(user_id, 'bot', f"[Документ] {caption}")
-            logger.info(f"Admin sent document to user {user_id}")
         
         elif message.video:
             caption = message.caption if message.caption else ""
             await bot.send_video(user_id, message.video.file_id, caption=caption)
             if caption:
                 await save_message(user_id, 'bot', f"[Видео] {caption}")
-            logger.info(f"Admin sent video to user {user_id}")
         
         elif message.audio:
             caption = message.caption if message.caption else ""
             await bot.send_audio(user_id, message.audio.file_id, caption=caption)
             if caption:
                 await save_message(user_id, 'bot', f"[Аудио] {caption}")
-            logger.info(f"Admin sent audio to user {user_id}")
         
         elif message.voice:
             await bot.send_voice(user_id, message.voice.file_id)
-            logger.info(f"Admin sent voice to user {user_id}")
         
         elif message.video_note:
             await bot.send_video_note(user_id, message.video_note.file_id)
-            logger.info(f"Admin sent video note to user {user_id}")
         
         else:
             await message.answer("❌ Неподдерживаемый тип сообщения", reply_markup=admin_main_menu())
@@ -664,7 +656,6 @@ async def view_conversation(callback: CallbackQuery, state: FSMContext):
     
     try:
         user_id = int(callback.data.split("_")[2])
-        logger.info(f"Admin viewing conversation for user {user_id}")
     except Exception as e:
         logger.error(f"Error parsing user_id from callback: {e}")
         await callback.answer("Ошибка при обработке")
@@ -678,8 +669,6 @@ async def view_conversation(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer("Пользователь не найден")
             await callback.answer()
             return
-        
-        logger.info(f"Found {len(messages)} messages for user {user_id}")
         
         if not messages:
             username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
@@ -721,7 +710,6 @@ async def view_conversation(callback: CallbackQuery, state: FSMContext):
         )
         
         await callback.answer()
-        logger.info(f"Sent conversation for user {user_id} in {len(conv_parts)} parts")
         
     except Exception as e:
         logger.error(f"Error viewing conversation for user {user_id}: {e}", exc_info=True)
@@ -735,20 +723,21 @@ async def back_to_conversations(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     
-    total_users = await get_users_count()
+    total_users = await get_users_count(show_hidden=False)
     per_page = 10
-    total_pages = math.ceil(total_users / per_page)
+    total_pages = max(1, math.ceil(total_users / per_page))
     
-    users = await get_all_users_list(page=1, per_page=per_page)
+    users = await get_all_users_list(page=1, per_page=per_page, show_hidden=False)
     
     if not users:
-        await callback.message.answer("Пока нет пользователей")
+        await callback.message.answer("Нет активных пользователей в списке")
         await callback.answer()
         return
     
+    keyboard = await users_list_keyboard(users, action='view', page=1, total_pages=total_pages)
     await callback.message.answer(
         f"💬 Выберите пользователя для просмотра переписки (Страница 1/{total_pages}):",
-        reply_markup=users_list_keyboard(users, action='view', page=1, total_pages=total_pages)
+        reply_markup=keyboard
     )
     await callback.answer()
 

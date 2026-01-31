@@ -32,21 +32,33 @@ async def update_user_language(user_id, language):
         )
         await db.commit()
 
-async def get_all_users_list(page=1, per_page=10):
+async def get_all_users_list(page=1, per_page=10, show_hidden=False):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         offset = (page - 1) * per_page
-        async with db.execute(
-            'SELECT user_id, username, status FROM users ORDER BY last_activity DESC LIMIT ? OFFSET ?',
-            (per_page, offset)
-        ) as cursor:
-            return await cursor.fetchall()
+        if show_hidden:
+            async with db.execute(
+                'SELECT user_id, username, status FROM users ORDER BY last_activity DESC LIMIT ? OFFSET ?',
+                (per_page, offset)
+            ) as cursor:
+                return await cursor.fetchall()
+        else:
+            async with db.execute(
+                'SELECT user_id, username, status FROM users WHERE hidden_at IS NULL ORDER BY last_activity DESC LIMIT ? OFFSET ?',
+                (per_page, offset)
+            ) as cursor:
+                return await cursor.fetchall()
 
-async def get_users_count():
+async def get_users_count(show_hidden=False):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute('SELECT COUNT(*) FROM users') as cursor:
-            result = await cursor.fetchone()
-            return result[0] if result else 0
+        if show_hidden:
+            async with db.execute('SELECT COUNT(*) FROM users') as cursor:
+                result = await cursor.fetchone()
+                return result[0] if result else 0
+        else:
+            async with db.execute('SELECT COUNT(*) FROM users WHERE hidden_at IS NULL') as cursor:
+                result = await cursor.fetchone()
+                return result[0] if result else 0
 
 async def delete_user_conversation(user_id):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -67,6 +79,39 @@ async def add_user_to_groups(user_id):
             (user_id,)
         )
         await db.commit()
+
+async def hide_user(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE users SET hidden_at = ? WHERE user_id = ?',
+            (datetime.now(), user_id)
+        )
+        await db.commit()
+
+async def unhide_user(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE users SET hidden_at = NULL WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+
+async def unhide_user_on_activity(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE users SET hidden_at = NULL, last_activity = ? WHERE user_id = ? AND hidden_at IS NOT NULL',
+            (datetime.now(), user_id)
+        )
+        await db.commit()
+
+async def has_bot_responded(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            'SELECT 1 FROM messages WHERE user_id = ? AND role = ? LIMIT 1',
+            (user_id, 'bot')
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row is not None
 
 async def get_stats():
     async with aiosqlite.connect(DB_PATH) as db:

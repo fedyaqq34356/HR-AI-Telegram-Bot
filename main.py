@@ -6,6 +6,7 @@ from config import BOT_TOKEN
 from database import init_db, init_default_settings, init_default_faq, init_forbidden_topics
 from handlers import get_router
 from logging_config import setup_logging
+from utils.auto_hide import auto_hide_inactive_users
 
 logger = setup_logging()
 
@@ -25,8 +26,10 @@ async def main():
     router = get_router()
     dp.include_router(router)
     
+    asyncio.create_task(auto_hide_inactive_users())
+    logger.info("Auto-hide background task started")
+    
     logger.info("Bot configured, starting polling...")
-    logger.info("Bot will automatically capture messages from the training group")
     
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

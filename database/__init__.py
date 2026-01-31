@@ -2,7 +2,8 @@ from .core import init_db
 from .users import (
     get_user, create_user, update_user_status, update_user_language,
     get_all_users_list, get_users_count, get_stats, 
-    is_user_in_groups, add_user_to_groups, delete_user_conversation
+    is_user_in_groups, add_user_to_groups, delete_user_conversation,
+    hide_user, unhide_user, unhide_user_on_activity, has_bot_responded
 )
 from .messages import (
     save_message, get_messages, get_user_conversations,
@@ -30,6 +31,10 @@ __all__ = [
     'is_user_in_groups',
     'add_user_to_groups',
     'delete_user_conversation',
+    'hide_user',
+    'unhide_user',
+    'unhide_user_on_activity',
+    'has_bot_responded',
     'save_message',
     'get_messages',
     'get_user_conversations',

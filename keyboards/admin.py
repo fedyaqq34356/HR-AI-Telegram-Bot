@@ -1,5 +1,6 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.types import InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup
+from database.users import has_bot_responded
 
 def admin_review_keyboard(user_id):
     builder = InlineKeyboardBuilder()
@@ -78,27 +79,33 @@ def conversations_action_keyboard():
     )
     return builder.as_markup()
 
-def users_list_keyboard(users, action='view', page=1, total_pages=1):
+async def users_list_keyboard(users, action='view', page=1, total_pages=1):
     builder = InlineKeyboardBuilder()
+
+    status_emojis = {
+        'new': '🆕',
+        'chatting': '💬',
+        'pending_review': '⏳',
+        'approved': '✅',
+        'rejected': '❌',
+        'registered': '📝',
+        'waiting_screenshot': '📸',
+        'helping_registration': '📋',
+        'waiting_admin': '⏳',
+    }
+
     for user in users:
-        status_emoji = {
-            'new': '🆕',
-            'chatting': '💬',
-            'pending_review': '⏳',
-            'approved': '✅',
-            'rejected': '❌',
-            'registered': '📝',
-            'waiting_screenshot': '📸',
-            'helping_registration': '📋'
-        }.get(user['status'], '❓')
-        
+        status_emoji = status_emojis.get(user['status'], '❓')
+        bot_responded = await has_bot_responded(user['user_id'])
+        bot_indicator = ' 🔵' if bot_responded else ''
+
         username_display = f"@{user['username']}" if user['username'] else f"User {user['user_id']}"
-        
+
         callback_prefix = 'write' if action == 'write' else 'view_conv' if action == 'view' else 'delete_conv'
-        
+
         builder.row(
             InlineKeyboardButton(
-                text=f"{status_emoji} {username_display}",
+                text=f"{status_emoji}{bot_indicator} {username_display}",
                 callback_data=f"{callback_prefix}_{user['user_id']}"
             )
         )
@@ -116,20 +123,16 @@ def users_list_keyboard(users, action='view', page=1, total_pages=1):
     if navigation_buttons:
         builder.row(*navigation_buttons)
     
-    if action == 'delete':
-        builder.row(
-            InlineKeyboardButton(text="◀️ К меню", callback_data="conversations_menu")
-        )
-    else:
-        builder.row(
-            InlineKeyboardButton(text="◀️ К меню", callback_data="conversations_menu")
-        )
+    builder.row(
+        InlineKeyboardButton(text="◀️ К меню", callback_data="conversations_menu")
+    )
     
     return builder.as_markup()
 
 def conversation_keyboard(user_id):
     builder = InlineKeyboardBuilder()
     builder.row(
+        InlineKeyboardButton(text="🚫 Скрыть из списка", callback_data=f"hide_user_{user_id}"),
         InlineKeyboardButton(text="◀️ К списку", callback_data="view_conversations")
     )
     return builder.as_markup()

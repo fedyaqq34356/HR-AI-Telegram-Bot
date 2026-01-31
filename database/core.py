@@ -15,6 +15,7 @@ async def init_db():
                 photos_count INTEGER DEFAULT 0,
                 in_groups INTEGER DEFAULT 0,
                 language TEXT DEFAULT 'ru',
+                hidden_at TIMESTAMP DEFAULT NULL,
                 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -35,6 +36,10 @@ async def init_db():
         if 'language' not in column_names:
             await db.execute('ALTER TABLE users ADD COLUMN language TEXT DEFAULT "ru"')
             logger.info("Added language column")
+
+        if 'hidden_at' not in column_names:
+            await db.execute('ALTER TABLE users ADD COLUMN hidden_at TIMESTAMP DEFAULT NULL')
+            logger.info("Added hidden_at column")
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS messages (
