@@ -1,5 +1,6 @@
 import logging
 import json
+import math
 from datetime import datetime
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -10,14 +11,15 @@ from config import ADMIN_ID
 from states import AdminStates, UserStates
 from keyboards import (
     admin_main_menu, users_list_keyboard, conversation_keyboard,
-    forbidden_topics_keyboard, cancel_keyboard
+    forbidden_topics_keyboard, cancel_keyboard, conversations_action_keyboard,
+    delete_conversation_confirm_keyboard, group_links_keyboard
 )
 from database import (
     get_setting, set_setting, save_ai_learning,
     get_pending_question, delete_pending_question, get_stats,
-    get_user_conversations, get_all_users_list, get_user,
+    get_user_conversations, get_all_users_list, get_user, get_users_count,
     get_forbidden_topics_from_db, add_forbidden_topic, delete_forbidden_topic,
-    save_message, update_user_status
+    save_message, update_user_status, delete_user_conversation
 )
 
 router = Router()
@@ -48,8 +50,30 @@ async def edit_welcome_menu(message: Message, state: FSMContext):
     if current_state:
         await state.clear()
     
+    await state.set_state(AdminStates.editing_welcome_lang)
+    
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🇷🇺 Русский", callback_data="welcome_lang_ru"))
+    builder.row(InlineKeyboardButton(text="🇺🇦 Українська", callback_data="welcome_lang_uk"))
+    builder.row(InlineKeyboardButton(text="🇬🇧 English", callback_data="welcome_lang_en"))
+    
+    await message.answer("Выберите язык приветствия для редактирования:", reply_markup=builder.as_markup())
+
+@router.callback_query(F.data.startswith("welcome_lang_"))
+async def select_welcome_language(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    lang = callback.data.split("_")[2]
+    await state.update_data(editing_lang=lang)
     await state.set_state(AdminStates.editing_welcome)
-    await message.answer("Отправь новый текст приветствия:", reply_markup=cancel_keyboard())
+    
+    lang_names = {'ru': 'Русский', 'uk': 'Українська', 'en': 'English'}
+    await callback.message.edit_text(f"Отправь новый текст приветствия для языка {lang_names[lang]}:")
+    await callback.answer()
 
 @router.message(AdminStates.editing_welcome, F.text)
 async def save_new_welcome(message: Message, state: FSMContext):
@@ -58,7 +82,7 @@ async def save_new_welcome(message: Message, state: FSMContext):
     
     if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
                          "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔙 Отмена"]:
+                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
@@ -66,10 +90,83 @@ async def save_new_welcome(message: Message, state: FSMContext):
             await message.answer("❌ Изменение приветствия отменено", reply_markup=admin_main_menu())
         return
     
-    await set_setting('welcome_message', message.text)
-    await message.answer("✅ Приветственное сообщение обновлено", reply_markup=admin_main_menu())
+    data = await state.get_data()
+    lang = data.get('editing_lang', 'ru')
+    
+    await set_setting(f'welcome_message_{lang}', message.text)
+    await message.answer(f"✅ Приветственное сообщение ({lang}) обновлено", reply_markup=admin_main_menu())
     await state.clear()
-    logger.info("Welcome message updated by admin")
+    logger.info(f"Welcome message ({lang}) updated by admin")
+
+@router.message(F.text == "🔗 Ссылки на группы")
+async def show_group_links_menu(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    await state.clear()
+    
+    training_link = await get_setting('training_group_link')
+    chat_link = await get_setting('chat_group_link')
+    
+    text = f"""🔗 Текущие ссылки на группы:
+
+📚 Группа с обучением:
+{training_link}
+
+💬 Чат с девочками:
+{chat_link}
+
+Выберите ссылку для изменения:"""
+    
+    await message.answer(text, reply_markup=group_links_keyboard())
+
+@router.callback_query(F.data == "edit_training_link")
+async def edit_training_link_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    await state.set_state(AdminStates.editing_training_link)
+    await callback.message.edit_text("Отправьте новую ссылку на группу с обучением:")
+    await callback.answer()
+
+@router.callback_query(F.data == "edit_chat_link")
+async def edit_chat_link_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    await state.set_state(AdminStates.editing_chat_link)
+    await callback.message.edit_text("Отправьте новую ссылку на чат с девочками:")
+    await callback.answer()
+
+@router.message(AdminStates.editing_training_link, F.text)
+async def save_training_link(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    if message.text == "🔙 Отмена":
+        await state.clear()
+        await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        return
+    
+    await set_setting('training_group_link', message.text)
+    await message.answer("✅ Ссылка на группу с обучением обновлена", reply_markup=admin_main_menu())
+    await state.clear()
+    logger.info("Training group link updated by admin")
+
+@router.message(AdminStates.editing_chat_link, F.text)
+async def save_chat_link(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    if message.text == "🔙 Отмена":
+        await state.clear()
+        await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        return
+    
+    await set_setting('chat_group_link', message.text)
+    await message.answer("✅ Ссылка на чат с девочками обновлена", reply_markup=admin_main_menu())
+    await state.clear()
+    logger.info("Chat group link updated by admin")
 
 @router.message(F.text == "📊 Статистика")
 async def show_stats_menu(message: Message, state: FSMContext):
@@ -107,24 +204,154 @@ async def show_conversations_menu(message: Message, state: FSMContext):
     
     await state.clear()
     
-    users = await get_all_users_list()
+    await message.answer(
+        "💬 Управление переписками:",
+        reply_markup=conversations_action_keyboard()
+    )
+
+@router.callback_query(F.data == "conversations_menu")
+async def back_to_conversations_menu(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
     
-    logger.info(f"Loading conversations, found {len(users)} users")
+    await state.clear()
+    
+    await callback.message.edit_text(
+        "💬 Управление переписками:",
+        reply_markup=conversations_action_keyboard()
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "view_conversations")
+async def show_conversations_list(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    await state.clear()
+    
+    total_users = await get_users_count()
+    per_page = 10
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=1, per_page=per_page)
+    
+    logger.info(f"Loading conversations, found {len(users)} users on page 1")
     
     if not users:
-        await message.answer("Пока нет пользователей", reply_markup=admin_main_menu())
+        await callback.message.edit_text("Пока нет пользователей")
+        await callback.answer()
         return
     
     try:
-        keyboard = users_list_keyboard(users)
-        await message.answer(
-            "💬 Выберите пользователя для просмотра переписки:",
+        keyboard = users_list_keyboard(users, action='view', page=1, total_pages=total_pages)
+        await callback.message.edit_text(
+            f"💬 Выберите пользователя для просмотра переписки (Страница 1/{total_pages}):",
             reply_markup=keyboard
         )
         logger.info(f"Sent conversations menu with {len(users)} users")
+        await callback.answer()
     except Exception as e:
         logger.error(f"Error showing conversations menu: {e}", exc_info=True)
-        await message.answer(f"Ошибка при загрузке списка: {e}", reply_markup=admin_main_menu())
+        await callback.message.edit_text(f"Ошибка при загрузке списка: {e}")
+        await callback.answer()
+
+@router.callback_query(F.data.startswith("page_view_"))
+async def paginate_conversations(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    page = int(callback.data.split("_")[2])
+    per_page = 10
+    total_users = await get_users_count()
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=page, per_page=per_page)
+    
+    keyboard = users_list_keyboard(users, action='view', page=page, total_pages=total_pages)
+    await callback.message.edit_text(
+        f"💬 Выберите пользователя для просмотра переписки (Страница {page}/{total_pages}):",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "delete_conversations_menu")
+async def show_delete_conversations_list(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    await state.clear()
+    
+    total_users = await get_users_count()
+    per_page = 10
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=1, per_page=per_page)
+    
+    if not users:
+        await callback.message.edit_text("Пока нет пользователей")
+        await callback.answer()
+        return
+    
+    keyboard = users_list_keyboard(users, action='delete', page=1, total_pages=total_pages)
+    await callback.message.edit_text(
+        f"🗑 Выберите пользователя для удаления переписки (Страница 1/{total_pages}):",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("page_delete_"))
+async def paginate_delete_conversations(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    page = int(callback.data.split("_")[2])
+    per_page = 10
+    total_users = await get_users_count()
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=page, per_page=per_page)
+    
+    keyboard = users_list_keyboard(users, action='delete', page=page, total_pages=total_pages)
+    await callback.message.edit_text(
+        f"🗑 Выберите пользователя для удаления переписки (Страница {page}/{total_pages}):",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+@router.callback_query(F.data.startswith("delete_conv_"))
+async def delete_conversation_confirm(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    user_id = int(callback.data.split("_")[2])
+    user = await get_user(user_id)
+    
+    if not user:
+        await callback.answer("Пользователь не найден")
+        return
+    
+    username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
+    
+    await callback.message.edit_text(
+        f"⚠️ Вы уверены, что хотите удалить переписку с {username_display}?",
+        reply_markup=delete_conversation_confirm_keyboard(user_id)
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("confirm_delete_"))
+async def confirm_delete_conversation(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    user_id = int(callback.data.split("_")[2])
+    
+    await delete_user_conversation(user_id)
+    
+    user = await get_user(user_id)
+    username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
+    
+    await callback.message.edit_text(f"✅ Переписка с {username_display} удалена")
+    await callback.answer("Удалено")
+    logger.info(f"Admin deleted conversation with user {user_id}")
 
 @router.message(F.text == "✉️ Написать девушке")
 async def write_to_user_menu(message: Message, state: FSMContext):
@@ -133,7 +360,11 @@ async def write_to_user_menu(message: Message, state: FSMContext):
     
     await state.clear()
     
-    users = await get_all_users_list()
+    total_users = await get_users_count()
+    per_page = 10
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=1, per_page=per_page)
     
     logger.info(f"Loading users for writing, found {len(users)} users")
     
@@ -142,15 +373,34 @@ async def write_to_user_menu(message: Message, state: FSMContext):
         return
     
     try:
-        keyboard = users_list_keyboard(users, action='write')
+        keyboard = users_list_keyboard(users, action='write', page=1, total_pages=total_pages)
         await message.answer(
-            "✉️ Выберите пользователя для отправки сообщения:",
+            f"✉️ Выберите пользователя для отправки сообщения (Страница 1/{total_pages}):",
             reply_markup=keyboard
         )
         logger.info(f"Sent write menu with {len(users)} users")
     except Exception as e:
         logger.error(f"Error showing write menu: {e}", exc_info=True)
         await message.answer(f"Ошибка при загрузке списка: {e}", reply_markup=admin_main_menu())
+
+@router.callback_query(F.data.startswith("page_write_"))
+async def paginate_write_users(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    page = int(callback.data.split("_")[2])
+    per_page = 10
+    total_users = await get_users_count()
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=page, per_page=per_page)
+    
+    keyboard = users_list_keyboard(users, action='write', page=page, total_pages=total_pages)
+    await callback.message.edit_text(
+        f"✉️ Выберите пользователя для отправки сообщения (Страница {page}/{total_pages}):",
+        reply_markup=keyboard
+    )
+    await callback.answer()
 
 @router.message(F.text == "📋 Логи")
 async def send_logs_menu(message: Message, state: FSMContext):
@@ -205,16 +455,23 @@ async def export_conversations_menu(message: Message, state: FSMContext):
     await state.clear()
     
     try:
-        users = await get_all_users_list()
+        total_users = await get_users_count()
+        all_users = []
+        per_page = 50
+        total_pages = math.ceil(total_users / per_page)
         
-        if not users:
+        for page in range(1, total_pages + 1):
+            users = await get_all_users_list(page=page, per_page=per_page)
+            all_users.extend(users)
+        
+        if not all_users:
             await message.answer("Нет пользователей для экспорта", reply_markup=admin_main_menu())
             return
         
         export_text = f"Экспорт переписок - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
         export_text += "=" * 80 + "\n\n"
         
-        for user in users:
+        for user in all_users:
             messages = await get_user_conversations(user['user_id'])
             
             if not messages:
@@ -226,7 +483,7 @@ async def export_conversations_menu(message: Message, state: FSMContext):
             export_text += f"{'='*80}\n\n"
             
             for msg in messages:
-                role_emoji = "👤" if msg['role'] == 'user' else "🤖"
+                role_emoji = "👤" if msg['role'] == 'user' else "🔵"
                 export_text += f"{role_emoji} {msg['role']} [{msg['timestamp']}]:\n{msg['content']}\n\n"
         
         filename = f"conversations_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -306,7 +563,7 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
     
     if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
                          "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔙 Отмена"]:
+                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
@@ -439,7 +696,7 @@ async def view_conversation(callback: CallbackQuery, state: FSMContext):
         current_part = f"💬 Переписка с {username_display} (статус: {user['status']}):\n\n"
         
         for msg in messages:
-            role_emoji = "👤" if msg['role'] == 'user' else "🤖"
+            role_emoji = "👤" if msg['role'] == 'user' else "🔵"
             content = msg['content'] if msg['content'] else ""
             msg_text = f"{role_emoji} {msg['role']}: {content}\n\n"
             
@@ -478,7 +735,11 @@ async def back_to_conversations(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     
-    users = await get_all_users_list()
+    total_users = await get_users_count()
+    per_page = 10
+    total_pages = math.ceil(total_users / per_page)
+    
+    users = await get_all_users_list(page=1, per_page=per_page)
     
     if not users:
         await callback.message.answer("Пока нет пользователей")
@@ -486,8 +747,8 @@ async def back_to_conversations(callback: CallbackQuery, state: FSMContext):
         return
     
     await callback.message.answer(
-        "💬 Выберите пользователя для просмотра переписки:",
-        reply_markup=users_list_keyboard(users)
+        f"💬 Выберите пользователя для просмотра переписки (Страница 1/{total_pages}):",
+        reply_markup=users_list_keyboard(users, action='view', page=1, total_pages=total_pages)
     )
     await callback.answer()
 
@@ -513,7 +774,7 @@ async def add_forbidden_topic_name(message: Message, state: FSMContext):
     
     if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
                          "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔙 Отмена"]:
+                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
@@ -536,7 +797,7 @@ async def add_forbidden_topic_keywords(message: Message, state: FSMContext):
     
     if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
                          "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔙 Отмена"]:
+                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())

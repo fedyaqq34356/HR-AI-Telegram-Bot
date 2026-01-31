@@ -1,5 +1,9 @@
 from .core import init_db
-from .users import get_user, create_user, update_user_status, get_all_users_list, get_stats, is_user_in_groups, add_user_to_groups
+from .users import (
+    get_user, create_user, update_user_status, update_user_language,
+    get_all_users_list, get_users_count, get_stats, 
+    is_user_in_groups, add_user_to_groups, delete_user_conversation
+)
 from .messages import (
     save_message, get_messages, get_user_conversations,
     save_pending_question, get_pending_question, delete_pending_question
@@ -19,10 +23,13 @@ __all__ = [
     'get_user',
     'create_user',
     'update_user_status',
+    'update_user_language',
     'get_all_users_list',
+    'get_users_count',
     'get_stats',
     'is_user_in_groups',
     'add_user_to_groups',
+    'delete_user_conversation',
     'save_message',
     'get_messages',
     'get_user_conversations',

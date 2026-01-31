@@ -27,10 +27,11 @@ def admin_main_menu():
         KeyboardButton(text="✉️ Написать девушке")
     )
     builder.row(
-        KeyboardButton(text="📋 Логи"),
-        KeyboardButton(text="🚫 Запретные темы")
+        KeyboardButton(text="🔗 Ссылки на группы"),
+        KeyboardButton(text="📋 Логи")
     )
     builder.row(
+        KeyboardButton(text="🚫 Запретные темы"),
         KeyboardButton(text="📥 Экспорт переписок")
     )
     return builder.as_markup(resize_keyboard=True)
@@ -42,6 +43,16 @@ def cancel_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text="🔙 Отмена"))
     return builder.as_markup(resize_keyboard=True)
+
+def group_links_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📚 Группа с обучением", callback_data="edit_training_link")
+    )
+    builder.row(
+        InlineKeyboardButton(text="💬 Чат с девочками", callback_data="edit_chat_link")
+    )
+    return builder.as_markup()
 
 def forbidden_topics_keyboard(topics):
     builder = InlineKeyboardBuilder()
@@ -57,9 +68,19 @@ def forbidden_topics_keyboard(topics):
     )
     return builder.as_markup()
 
-def users_list_keyboard(users, action='view'):
+def conversations_action_keyboard():
     builder = InlineKeyboardBuilder()
-    for user in users[:20]:
+    builder.row(
+        InlineKeyboardButton(text="👁 Посмотреть переписки", callback_data="view_conversations")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🗑 Удалить переписки", callback_data="delete_conversations_menu")
+    )
+    return builder.as_markup()
+
+def users_list_keyboard(users, action='view', page=1, total_pages=1):
+    builder = InlineKeyboardBuilder()
+    for user in users:
         status_emoji = {
             'new': '🆕',
             'chatting': '💬',
@@ -73,7 +94,7 @@ def users_list_keyboard(users, action='view'):
         
         username_display = f"@{user['username']}" if user['username'] else f"User {user['user_id']}"
         
-        callback_prefix = 'write' if action == 'write' else 'view_conv'
+        callback_prefix = 'write' if action == 'write' else 'view_conv' if action == 'view' else 'delete_conv'
         
         builder.row(
             InlineKeyboardButton(
@@ -81,11 +102,42 @@ def users_list_keyboard(users, action='view'):
                 callback_data=f"{callback_prefix}_{user['user_id']}"
             )
         )
+    
+    navigation_buttons = []
+    if page > 1:
+        navigation_buttons.append(
+            InlineKeyboardButton(text="◀️ Назад", callback_data=f"page_{action}_{page-1}")
+        )
+    if page < total_pages:
+        navigation_buttons.append(
+            InlineKeyboardButton(text="Вперед ▶️", callback_data=f"page_{action}_{page+1}")
+        )
+    
+    if navigation_buttons:
+        builder.row(*navigation_buttons)
+    
+    if action == 'delete':
+        builder.row(
+            InlineKeyboardButton(text="◀️ К меню", callback_data="conversations_menu")
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="◀️ К меню", callback_data="conversations_menu")
+        )
+    
     return builder.as_markup()
 
 def conversation_keyboard(user_id):
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="◀️ К списку", callback_data="conversations")
+        InlineKeyboardButton(text="◀️ К списку", callback_data="view_conversations")
+    )
+    return builder.as_markup()
+
+def delete_conversation_confirm_keyboard(user_id):
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{user_id}"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="delete_conversations_menu")
     )
     return builder.as_markup()

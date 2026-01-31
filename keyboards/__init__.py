@@ -6,7 +6,10 @@ from .admin import (
     forbidden_topics_keyboard,
     users_list_keyboard,
     conversation_keyboard,
-    cancel_keyboard
+    cancel_keyboard,
+    conversations_action_keyboard,
+    delete_conversation_confirm_keyboard,
+    group_links_keyboard
 )
 from .user import groups_keyboard
 
@@ -19,5 +22,8 @@ __all__ = [
     'users_list_keyboard',
     'conversation_keyboard',
     'cancel_keyboard',
+    'conversations_action_keyboard',
+    'delete_conversation_confirm_keyboard',
+    'group_links_keyboard',
     'groups_keyboard'
 ]

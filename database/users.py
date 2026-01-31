@@ -8,11 +8,11 @@ async def get_user(user_id):
         async with db.execute('SELECT * FROM users WHERE user_id = ?', (user_id,)) as cursor:
             return await cursor.fetchone()
 
-async def create_user(user_id, username):
+async def create_user(user_id, username, language='ru'):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            'INSERT INTO users (user_id, username) VALUES (?, ?)',
-            (user_id, username)
+            'INSERT INTO users (user_id, username, language) VALUES (?, ?, ?)',
+            (user_id, username, language)
         )
         await db.commit()
 
@@ -24,11 +24,35 @@ async def update_user_status(user_id, status):
         )
         await db.commit()
 
-async def get_all_users_list():
+async def update_user_language(user_id, language):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE users SET language = ? WHERE user_id = ?',
+            (language, user_id)
+        )
+        await db.commit()
+
+async def get_all_users_list(page=1, per_page=10):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute('SELECT user_id, username, status FROM users ORDER BY last_activity DESC') as cursor:
+        offset = (page - 1) * per_page
+        async with db.execute(
+            'SELECT user_id, username, status FROM users ORDER BY last_activity DESC LIMIT ? OFFSET ?',
+            (per_page, offset)
+        ) as cursor:
             return await cursor.fetchall()
+
+async def get_users_count():
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('SELECT COUNT(*) FROM users') as cursor:
+            result = await cursor.fetchone()
+            return result[0] if result else 0
+
+async def delete_user_conversation(user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('DELETE FROM messages WHERE user_id = ?', (user_id,))
+        await db.execute('DELETE FROM pending_questions WHERE user_id = ?', (user_id,))
+        await db.commit()
 
 async def is_user_in_groups(user_id):
     async with aiosqlite.connect(DB_PATH) as db:

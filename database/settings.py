@@ -16,7 +16,7 @@ async def set_setting(key, value):
         await db.commit()
 
 async def init_default_settings():
-    default_welcome = """Приветик
+    default_welcome_ru = """Приветик
 
 🌟 РАБОТА СТРИМ-МОДЕЛЬЮ В ПРИЛОЖЕНИИ HALO 🌟
 
@@ -70,6 +70,114 @@ async def init_default_settings():
 
 Если формат подходит — жду фото 👋"""
 
+    default_welcome_uk = """Привітик
+
+🌟 РОБОТА СТРІМ-МОДЕЛЛЮ В ЗАСТОСУНКУ HALO 🌟
+
+💬 Заробіток на спілкуванні, прямих ефірах та приватних відеодзвінках з чоловіками
+📞 1 хвилина спілкування = 1$
+💳 Комісія агентства — 20%
+👉 Чистий дохід: 0.8$ за хвилину
+
+💰 Приклади заробітку в дзвінках:
+— 5 хвилин спілкування = 5$ → 4$ чистими
+— 10 хвилин = 10$ → 8$ чистими
+— 30 хвилин = 30$ → 24$ чистими
+— 1 година дзвінків = 60$ → 48$ чистими
+
+💵 Від 50$ на день при активній роботі
+
+🌍 Аудиторія: США, Європа, Англія, ОАЕ, арабські країни
+👨‍💼 Багато чоловіків приходять саме за спілкуванням, а не за 🔞
+🌐 Вбудований перекладач — англійська не обов'язкова
+🕒 Вільний графік — працюєш, коли зручно
+
+🎤 У відкритих ефірах — тільки культурне спілкування
+Можна танцювати, співати, спілкуватися, слухати музику
+💎 Важливо виглядати охайно і презентабельно
+❌ Ніякої еротики та відвертого одягу — за порушення бан
+
+📞 У приватних дзвінках формат спілкування може бути будь-яким — за взаємною згодою
+— Кожна хвилина оплачується
+— Можна отримувати подарунки
+— Перекладач працює і в дзвінках
+— Вас ніхто не чує, крім співрозмовника
+
+📤 Виведення коштів:
+— Самостійно
+— Термін: 1–3 дні
+— Є відео-інструкція, як вивести гроші на карту або крипту
+— Якщо виникають складнощі — допомагаємо з виведенням
+
+📸 Як почати:
+Надішли 2–3 фото
+— хороша якість
+— чітко видно обличчя
+(фото тільки для внутрішнього схвалення)
+
+⚠️ Важливо:
+🔹 Перші 7 днів — тестовий період
+🔹 Потрібно заробити 100$
+🔹 У кожної дівчини є тільки одна можливість створити акаунт. Якщо акаунт блокують — новий створити не можна, тому виділяйте максимум часу для роботи
+🚀 Новеньких активно просувають
+❌ Тест не пройдено — акаунт блокується
+
+Якщо формат підходить — чекаю фото 👋"""
+
+    default_welcome_en = """Hello
+
+🌟 WORK AS A STREAM MODEL IN HALO APP 🌟
+
+💬 Earn from chatting, live streams and private video calls with men
+📞 1 minute of communication = 1$
+💳 Agency commission — 20%
+👉 Net income: 0.8$ per minute
+
+💰 Examples of earnings in calls:
+— 5 minutes of communication = 5$ → 4$ net
+— 10 minutes = 10$ → 8$ net
+— 30 minutes = 30$ → 24$ net
+— 1 hour of calls = 60$ → 48$ net
+
+💵 From 50$ per day with active work
+
+🌍 Audience: USA, Europe, England, UAE, Arab countries
+👨‍💼 Many men come for communication, not for 🔞
+🌐 Built-in translator — English is not required
+🕒 Free schedule — work when convenient
+
+🎤 In open streams — only cultural communication
+You can dance, sing, chat, listen to music
+💎 Important to look neat and presentable
+❌ No erotica and revealing clothing — violation = ban
+
+📞 In private calls the format can be anything — by mutual consent
+— Every minute is paid
+— Can receive gifts
+— Translator works in calls
+— Nobody hears you except the interlocutor
+
+📤 Withdrawal of funds:
+— Independently
+— Period: 1–3 days
+— There is a video instruction on how to withdraw money to card or crypto
+— If there are difficulties — we help with withdrawal
+
+📸 How to start:
+Send 2–3 photos
+— good quality
+— face clearly visible
+(photos only for internal approval)
+
+⚠️ Important:
+🔹 First 7 days — trial period
+🔹 Need to earn 100$
+🔹 Each girl has only one opportunity to create an account. If account is blocked — cannot create new one, so dedicate maximum time to work
+🚀 Newbies are actively promoted
+❌ Test not passed — account is blocked
+
+If the format suits — waiting for photos 👋"""
+
     default_rejection = "Прости пожалуйста, но офис к сожалению отклонил твою анкету."
     
     default_approval = """Подключение к рабочим группам
@@ -104,9 +212,16 @@ Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 5. После записи — пришли скрин, где видно твой ID в приложении и агентство.
 6. Я отправляю заявку в офис. На следующий будний день твой аккаунт активируют."""
 
+    default_training_group = "https://t.me/+7crlJXEcRAk0YTUy"
+    default_chat_group = "https://t.me/+GnKecVUalic2OTBi"
+
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('welcome_message', default_welcome))
+        await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('welcome_message_ru', default_welcome_ru))
+        await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('welcome_message_uk', default_welcome_uk))
+        await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('welcome_message_en', default_welcome_en))
         await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('rejection_message', default_rejection))
         await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('approval_message', default_approval))
         await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('registration_instructions', default_registration))
+        await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('training_group_link', default_training_group))
+        await db.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('chat_group_link', default_chat_group))
         await db.commit()

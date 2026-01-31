@@ -5,7 +5,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 
 from states import UserStates
-from database import update_application_status, update_user_status, get_setting, save_message
+from database import (
+    update_application_status, update_user_status, get_setting, 
+    save_message, get_user
+)
+from keyboards import groups_keyboard
 from config import GROUP_ID
 
 router = Router()
@@ -26,15 +30,30 @@ async def approve_application(callback: CallbackQuery, bot, state: FSMContext):
     
     logger.info(f"Set state helping_registration for user {user_id}")
     
+    user = await get_user(user_id)
+    lang = user['language'] if user else 'ru'
+    
     screenshot_file = FSInputFile('images/halo_download.jpg')
-    part1_text = """🔰 Скачивание приложения
+    
+    part1_texts = {
+        'ru': """🔰 Скачивание приложения
 Заходишь на сайт и скачиваешь приложение For hosts, подходящее для твоего телефона (выделено розовым цветом).
+https://livegirl.me/#/mobilepage""",
+        'uk': """🔰 Завантаження застосунку
+Заходиш на сайт і завантажуєш застосунок For hosts, підходящий для твого телефону (виділено рожевим кольором).
+https://livegirl.me/#/mobilepage""",
+        'en': """🔰 Downloading the application
+Go to the website and download the For hosts application suitable for your phone (highlighted in pink).
 https://livegirl.me/#/mobilepage"""
+    }
+    
+    part1_text = part1_texts.get(lang, part1_texts['ru'])
     
     await bot.send_photo(user_id, screenshot_file, caption=part1_text)
     await save_message(user_id, 'bot', f'[Фото с инструкцией]\n{part1_text}')
     
-    part2_text = """📰 Регистрация
+    part2_texts = {
+        'ru': """📰 Регистрация
 1. Открываешь приложение и нажимаешь «Регистрация».
 Вводишь:
 • Почту
@@ -51,7 +70,44 @@ Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 📢 Если не умеешь читать на английском — вот как произносить:
 Хеллоу. Май нейм Аня. Ай эм эйтин йерс олд. Ай лив ин Джермани. Ай вонт ту джойн.
 5. После записи — пришли скрин, где видно твой ID в приложении и агентство.
-6. Я отправляю заявку в офис. На следующий будний день твой аккаунт активируют."""
+6. Я отправляю заявку в офис. На следующий будний день твой аккаунт активируют.""",
+        'uk': """📰 Реєстрація
+1. Відкриваєш застосунок і натискаєш «Реєстрація».
+Вводиш:
+• Пошту
+• Пароль для входу
+2. Вказуєш:
+• Нікнейм
+• Вік
+• Мови: арабська, англійська, українська, російська
+3. У розділі Агентство обираєш: Tosagency-Ukraine
+4. Завантажуєш своє фото і записуєш коротке відео-вітання.
+🔹 Приклад для відео:
+Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
+👉 Вкажи своє ім'я, вік (можна трохи менше реального) і країну.
+📢 Якщо не вмієш читати англійською — ось як вимовляти:
+Хеллоу. Май нейм Аня. Ай ем ейтін йерс олд. Ай лів ін Джерм��ні. Ай вонт ту джойн.
+5. Після запису — надішли скрін, де видно твій ID у застосунку і агентство.
+6. Я відправляю заявку в офіс. Наступного робочого дня твій акаунт активують.""",
+        'en': """📰 Registration
+1. Open the application and click "Registration".
+Enter:
+• Email
+• Login password
+2. Specify:
+• Nickname
+• Age
+• Languages: Arabic, English, Ukrainian, Russian
+3. In the Agency section choose: Tosagency-Ukraine
+4. Upload your photo and record a short video greeting.
+🔹 Example for video:
+Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
+👉 State your name, age (can be slightly less than real) and country.
+5. After recording — send a screenshot showing your ID in the application and agency.
+6. I send the application to the office. The next business day your account will be activated."""
+    }
+    
+    part2_text = part2_texts.get(lang, part2_texts['ru'])
     
     await bot.send_message(user_id, part2_text)
     await save_message(user_id, 'bot', part2_text)
