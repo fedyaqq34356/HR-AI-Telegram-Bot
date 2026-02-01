@@ -11,7 +11,7 @@ from keyboards import admin_answer_keyboard
 from database import (
     get_user, create_user, update_user_status, save_message, update_user_language,
     save_photo, get_setting, save_ai_learning, save_pending_question,
-    is_user_in_groups, add_user_to_groups, unhide_user_on_activity
+    is_user_in_groups, add_user_to_groups, unhide_user_on_activity, has_bot_responded
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
@@ -166,6 +166,7 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     user = await get_user(user_id)
     
     if user['status'] not in ['new', 'chatting', 'waiting_photos']:
+        logger.info(f"User {user_id} sent photo but in status {user['status']}, ignoring")
         return
     
     photos_count = user['photos_count']
@@ -395,9 +396,11 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
         return
     
     question = message.text
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
     
     if is_review_request(question):
-        await send_reviews(message)
+        await send_reviews(message, user_lang)
         return
     
     await save_message(user_id, 'user', question)
@@ -416,7 +419,6 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
     if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
         await save_pending_question(user_id, question)
         
-        user = await get_user(user_id)
         user_display = get_user_display_name({
             'username': user['username'],
             'first_name': message.from_user.first_name,
@@ -429,7 +431,6 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        user_lang = user['language'] or 'ru'
         escalate_texts = {
             'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
             'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
@@ -478,15 +479,15 @@ async def handle_waiting_admin(message: Message, bot):
         return
     
     question = message.text
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
     
     if is_review_request(question):
-        await send_reviews(message)
+        await send_reviews(message, user_lang)
         return
     
     await save_message(user_id, 'user', question)
     
-    user = await get_user(user_id)
-    user_lang = user['language'] or 'ru'
     wait_texts = {
         'ru': "Твой вопрос передан менеджеру, скоро тебе ответят! 😊",
         'uk': "Твоє питання передане менеджеру, скоро тобі відповідять! 😊",
@@ -524,9 +525,11 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         return
     
     question = message.text
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
     
     if is_review_request(question):
-        await send_reviews(message)
+        await send_reviews(message, user_lang)
         return
     
     await save_message(user_id, 'user', question)
@@ -552,7 +555,6 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         
         await save_pending_question(user_id, question)
         
-        user = await get_user(user_id)
         user_display = get_user_display_name({
             'username': user['username'],
             'first_name': message.from_user.first_name,
@@ -565,7 +567,6 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        user_lang = user['language'] or 'ru'
         escalate_texts = {
             'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
             'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
@@ -592,6 +593,18 @@ async def handle_screenshot_from_registered(message: Message, state: FSMContext)
     
     await unhide_user_on_activity(user_id)
     
+    user = await get_user(user_id)
+    
+    if user['status'] in ['registered', 'approved']:
+        user_lang = user['language'] or 'ru'
+        already_texts = {
+            'ru': "Ты уже прошла регистрацию! Если у тебя есть вопросы по работе — просто спрашивай 😊",
+            'uk': "Ти вже пройшла реєстрацію! Якщо у тебе є питання по роботі — просто питай 😊",
+            'en': "You've already completed registration! If you have work-related questions — just ask 😊"
+        }
+        await message.answer(already_texts.get(user_lang, already_texts['ru']))
+        return
+    
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
     
@@ -614,9 +627,11 @@ async def handle_question(message: Message, state: FSMContext, bot):
         return
     
     question = message.text
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
     
     if is_review_request(question):
-        await send_reviews(message)
+        await send_reviews(message, user_lang)
         return
     
     await save_message(user_id, 'user', question)
@@ -638,7 +653,6 @@ async def handle_question(message: Message, state: FSMContext, bot):
         
         await save_pending_question(user_id, question)
         
-        user = await get_user(user_id)
         user_display = get_user_display_name({
             'username': user['username'],
             'first_name': message.from_user.first_name,
@@ -651,7 +665,6 @@ async def handle_question(message: Message, state: FSMContext, bot):
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        user_lang = user['language'] or 'ru'
         escalate_texts = {
             'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
             'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",

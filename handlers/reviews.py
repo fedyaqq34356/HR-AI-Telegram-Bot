@@ -22,23 +22,47 @@ REVIEW_FILES = [
     'review_achievement_10.jpg'
 ]
 
-REVIEW_KEYWORDS = [
-    'отзыв', 'отзывы', 'отзывами',
-    'реальн', 'правда', 'работает',
-    'кто работал', 'кто работает',
-    'девочки зарабатывают', 'можно ли доверять',
-    'это правда', 'это реально'
-]
+REVIEW_KEYWORDS = {
+    'ru': [
+        'отзыв', 'отзывы', 'отзывами',
+        'реальн', 'правда', 'работает',
+        'кто работал', 'кто работает',
+        'девочки зарабатывают', 'можно ли доверять',
+        'это правда', 'это реально'
+    ],
+    'uk': [
+        'відгук', 'відгуки', 'відгуками',
+        'реальн', 'правда', 'працює',
+        'хто працював', 'хто працює',
+        'дівчата заробляють', 'чи можна довіряти',
+        'це правда', 'це реально'
+    ],
+    'en': [
+        'review', 'reviews', 'testimonial',
+        'real', 'truth', 'works',
+        'who worked', 'who works',
+        'girls earn', 'can trust',
+        'is it true', 'is it real'
+    ]
+}
 
 def is_review_request(text: str) -> bool:
     text_lower = text.lower()
-    return any(keyword in text_lower for keyword in REVIEW_KEYWORDS)
+    for lang_keywords in REVIEW_KEYWORDS.values():
+        if any(keyword in text_lower for keyword in lang_keywords):
+            return True
+    return False
 
-async def send_reviews(message: Message):
+async def send_reviews(message: Message, user_lang='ru'):
     try:
         if not os.path.exists(REVIEWS_FOLDER):
             logger.error(f"Reviews folder '{REVIEWS_FOLDER}' does not exist")
-            await message.answer("Конечно! У нас много довольных девочек, которые успешно работают 😊")
+            responses = {
+                'ru': "Конечно! У нас много довольных девочек, которые успешно работают 😊",
+                'uk': "Звичайно! У нас багато задоволених дівчат, які успішно працюють 😊",
+                'en': "Of course! We have many satisfied girls who work successfully 😊"
+            }
+            await message.answer(responses.get(user_lang, responses['ru']))
             return
         
         existing_reviews = []
@@ -53,12 +77,22 @@ async def send_reviews(message: Message):
         
         if not existing_reviews:
             logger.warning(f"No valid review files found in {REVIEWS_FOLDER}")
-            await message.answer("Конечно! У нас много довольных девочек, которые успешно работают 😊")
+            responses = {
+                'ru': "Конечно! У нас много довольных девочек, которые успешно работают 😊",
+                'uk': "Звичайно! У нас багато задоволених дівчат, які успішно працюють 😊",
+                'en': "Of course! We have many satisfied girls who work successfully 😊"
+            }
+            await message.answer(responses.get(user_lang, responses['ru']))
             return
         
         logger.info(f"Found {len(existing_reviews)} valid review files")
         
-        await message.answer("Конечно! Вот отзывы наших девочек 😊")
+        intro_texts = {
+            'ru': "Конечно! Вот отзывы наших девочек 😊",
+            'uk': "Звичайно! Ось відгуки наших дівчат 😊",
+            'en': "Of course! Here are reviews from our girls 😊"
+        }
+        await message.answer(intro_texts.get(user_lang, intro_texts['ru']))
         
         sent_count = 0
         for filepath in existing_reviews:
@@ -70,11 +104,26 @@ async def send_reviews(message: Message):
                 continue
         
         if sent_count > 0:
-            await message.answer("Вот такие результаты у наших моделей! Готова присоединиться? 💪")
+            outro_texts = {
+                'ru': "Вот такие результаты у наших моделей! Готова присоединиться? 💪",
+                'uk': "Ось такі результати у наших моделей! Готова приєднатися? 💪",
+                'en': "These are the results of our models! Ready to join? 💪"
+            }
+            await message.answer(outro_texts.get(user_lang, outro_texts['ru']))
             logger.info(f"Sent {sent_count} reviews to user {message.from_user.id}")
         else:
-            await message.answer("Конечно! У нас много довольных девочек, которые успешно работают 😊")
+            responses = {
+                'ru': "Конечно! У нас много довольных девочек, которые успешно работают 😊",
+                'uk': "Звичайно! У нас багато задоволених дівчат, які успішно працюють 😊",
+                'en': "Of course! We have many satisfied girls who work successfully 😊"
+            }
+            await message.answer(responses.get(user_lang, responses['ru']))
         
     except Exception as e:
         logger.error(f"Error sending reviews: {e}", exc_info=True)
-        await message.answer("Конечно! У нас много довольных девочек, которые успешно работают 😊")
+        responses = {
+            'ru': "Конечно! У нас много довольных девочек, которые успешно работают 😊",
+            'uk': "Звичайно! У нас багато задоволених дівчат, які успішно працюють 😊",
+            'en': "Of course! We have many satisfied girls who work successfully 😊"
+        }
+        await message.answer(responses.get(user_lang, responses['ru']))
