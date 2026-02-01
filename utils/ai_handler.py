@@ -282,6 +282,17 @@ async def check_faq_direct_match(question):
     if any(kw in q_lower for kw in video_record_keywords):
         return 'В приложении должна быть кнопка записи видео. Убедись, что разрешила доступ к камере и микрофону. Просто скажи: Hello, my name is [имя]. I am [возраст] years old. I live in [страна]. I want to join. 😊'
     
+    stream_keywords = ['как запустить эфир', 'запустить эфир', 'как начать эфир', 'начать эфир', 
+                      'як запустити ефір', 'запустити ефір', 'як почати ефір', 'почати ефір',
+                      'how to start stream', 'start stream', 'how to go live', 'start live']
+    if any(kw in q_lower for kw in stream_keywords):
+        if 'як' in q_lower or 'ефір' in q_lower:
+            return 'Ти можеш зайти в групу з навчанням і там є відео інструкція 😊'
+        elif 'how' in q_lower or 'live' in q_lower:
+            return 'You can join the training group and there is a video instruction 😊'
+        else:
+            return 'Ты можешь зайти в группу с обучением и там есть видео инструкция 😊'
+    
     return None
 
 async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_groups=False):
@@ -335,9 +346,11 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_gro
 
 async def get_ai_response(user_id, question, is_in_groups=False):
     if await check_forbidden_topics(question):
+        user = await get_user(user_id)
+        lang = user['language'] if user else 'ru'
         logger.info(f"Forbidden topic detected for user {user_id}")
         return {
-            'answer': UNIVERSAL_RESPONSE,
+            'answer': UNIVERSAL_RESPONSE.get(lang, UNIVERSAL_RESPONSE['ru']),
             'confidence': 100,
             'escalate': False
         }

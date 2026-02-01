@@ -9,12 +9,13 @@ from config import ADMIN_ID, PHOTOS_MIN, PHOTOS_MAX, AI_CONFIDENCE_THRESHOLD, GR
 from states import UserStates
 from keyboards import admin_answer_keyboard
 from database import (
-    get_user, create_user, update_user_status, save_message,
+    get_user, create_user, update_user_status, save_message, update_user_language,
     save_photo, get_setting, save_ai_learning, save_pending_question,
     is_user_in_groups, add_user_to_groups, unhide_user_on_activity
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
+from utils.language_detector import detect_language
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -63,44 +64,48 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     if user and user['status'] == 'rejected':
         return
     
+    detected_lang = detect_language(message.text) if message.text else 'ru'
+    
     if not user:
-        await create_user(user_id, username)
+        await create_user(user_id, username, language=detected_lang)
+        await update_user_status(user_id, 'chatting')
+        await state.set_state(UserStates.chatting)
         
-        if is_in_group:
-            await update_user_status(user_id, 'registered')
-            await state.set_state(UserStates.registered)
-            welcome_text = "Привет! Вижу ты уже с нами в группе 😊\nЧем могу помочь?"
-            await message.answer(welcome_text)
-            await save_message(user_id, 'bot', welcome_text)
-        else:
-            await update_user_status(user_id, 'chatting')
-            await state.set_state(UserStates.chatting)
-            welcome_msg = await get_setting('welcome_message')
-            await message.answer(welcome_msg)
-            await save_message(user_id, 'bot', welcome_msg)
+        welcome_msg = await get_setting(f'welcome_message_{detected_lang}')
+        if not welcome_msg:
+            welcome_msg = await get_setting('welcome_message_ru')
+        
+        await message.answer(welcome_msg)
+        await save_message(user_id, 'bot', welcome_msg)
     else:
         if is_in_group and user['status'] not in ['registered', 'approved']:
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
-            return_text = "С возвращением! Вижу ты присоединилась к группе 😊"
-            await message.answer(return_text)
-            await save_message(user_id, 'bot', return_text)
-        else:
-            return_text = "С возвращением! Чем могу помочь? 😊"
-            await message.answer(return_text)
-            await save_message(user_id, 'bot', return_text)
-            status_to_state = {
-                'chatting': UserStates.chatting,
-                'asking_work_hours': UserStates.asking_work_hours,
-                'asking_experience': UserStates.asking_experience,
-                'pending_review': UserStates.pending_review,
-                'waiting_screenshot': UserStates.waiting_screenshot,
-                'registered': UserStates.registered,
-                'helping_registration': UserStates.helping_registration,
-                'waiting_admin': UserStates.waiting_admin,
-            }
-            new_state = status_to_state.get(user['status'], UserStates.chatting)
-            await state.set_state(new_state)
+        
+        user_lang = user['language'] or 'ru'
+        
+        return_texts = {
+            'ru': "С возвращением! Чем могу помочь? 😊",
+            'uk': "З поверненням! Чим можу допомогти? 😊",
+            'en': "Welcome back! How can I help? 😊"
+        }
+        
+        return_text = return_texts.get(user_lang, return_texts['ru'])
+        await message.answer(return_text)
+        await save_message(user_id, 'bot', return_text)
+        
+        status_to_state = {
+            'chatting': UserStates.chatting,
+            'asking_work_hours': UserStates.asking_work_hours,
+            'asking_experience': UserStates.asking_experience,
+            'pending_review': UserStates.pending_review,
+            'waiting_screenshot': UserStates.waiting_screenshot,
+            'registered': UserStates.registered,
+            'helping_registration': UserStates.helping_registration,
+            'waiting_admin': UserStates.waiting_admin,
+        }
+        new_state = status_to_state.get(user['status'], UserStates.chatting)
+        await state.set_state(new_state)
 
 @router.message(UserStates.chatting, F.photo)
 async def handle_photo_in_chatting(message: Message, state: FSMContext):
@@ -122,7 +127,13 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
     photos_count = user['photos_count']
     
     if photos_count >= PHOTOS_MAX:
-        max_text = f"Максимум {PHOTOS_MAX} фото! У тебя уже загружено достаточно 👍"
+        user_lang = user['language'] or 'ru'
+        max_texts = {
+            'ru': f"Максимум {PHOTOS_MAX} фото! У тебя уже загружено достаточно 👍",
+            'uk': f"Максимум {PHOTOS_MAX} фото! У тебе вже завантажено достатньо 👍",
+            'en': f"Maximum {PHOTOS_MAX} photos! You've already uploaded enough 👍"
+        }
+        max_text = max_texts.get(user_lang, max_texts['ru'])
         await message.answer(max_text)
         await save_message(user_id, 'bot', max_text)
         return
@@ -149,7 +160,13 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                 total_photos = current_count + len(photos_in_group)
                 
                 if total_photos > PHOTOS_MAX:
-                    limit_text = f"Можно загрузить максимум {PHOTOS_MAX} фото! Отправь не больше {PHOTOS_MAX - current_count} фото."
+                    user_lang = user['language'] or 'ru'
+                    limit_texts = {
+                        'ru': f"Можно загрузить максимум {PHOTOS_MAX} фото! Отправь не больше {PHOTOS_MAX - current_count} фото.",
+                        'uk': f"Можна завантажити максимум {PHOTOS_MAX} фото! Надішли не більше {PHOTOS_MAX - current_count} фото.",
+                        'en': f"You can upload maximum {PHOTOS_MAX} photos! Send no more than {PHOTOS_MAX - current_count} photos."
+                    }
+                    limit_text = limit_texts.get(user_lang, limit_texts['ru'])
                     await message.answer(limit_text)
                     await save_message(user_id, 'bot', limit_text)
                     del photo_group_cache[media_group_id]
@@ -167,13 +184,25 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                 
                 if photos_count < PHOTOS_MIN:
                     remaining = PHOTOS_MIN - photos_count
-                    remaining_text = f"Отлично! Нужно ещё минимум {remaining} фото 📸"
+                    user_lang = user['language'] or 'ru'
+                    remaining_texts = {
+                        'ru': f"Отлично! Нужно ещё минимум {remaining} фото 📸",
+                        'uk': f"Чудово! Потрібно ще мінімум {remaining} фото 📸",
+                        'en': f"Great! Need at least {remaining} more photo(s) 📸"
+                    }
+                    remaining_text = remaining_texts.get(user_lang, remaining_texts['ru'])
                     await message.answer(remaining_text)
                     await save_message(user_id, 'bot', remaining_text)
                 elif photos_count >= PHOTOS_MIN:
                     await update_user_status(user_id, 'asking_work_hours')
                     await state.set_state(UserStates.asking_work_hours)
-                    question_text = "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)"
+                    user_lang = user['language'] or 'ru'
+                    question_texts = {
+                        'ru': "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)",
+                        'uk': "Чудово! Тепер декілька питань:\n\n1️⃣ Скільки часу на день ти готова приділяти нашому застосунку?\n(Відповідь у вільній формі)",
+                        'en': "Great! Now a few questions:\n\n1️⃣ How much time per day are you ready to dedicate to our app?\n(Answer in free form)"
+                    }
+                    question_text = question_texts.get(user_lang, question_texts['ru'])
                     await message.answer(question_text)
                     await save_message(user_id, 'bot', question_text)
     else:
@@ -184,13 +213,25 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         
         if photos_count < PHOTOS_MIN:
             remaining = PHOTOS_MIN - photos_count
-            remaining_text = f"Отлично! Нужно ещё минимум {remaining} фото 📸"
+            user_lang = user['language'] or 'ru'
+            remaining_texts = {
+                'ru': f"Отлично! Нужно ещё минимум {remaining} фото 📸",
+                'uk': f"Чудово! Потрібно ще мінімум {remaining} фото 📸",
+                'en': f"Great! Need at least {remaining} more photo(s) 📸"
+            }
+            remaining_text = remaining_texts.get(user_lang, remaining_texts['ru'])
             await message.answer(remaining_text)
             await save_message(user_id, 'bot', remaining_text)
         elif photos_count >= PHOTOS_MIN:
             await update_user_status(user_id, 'asking_work_hours')
             await state.set_state(UserStates.asking_work_hours)
-            question_text = "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)"
+            user_lang = user['language'] or 'ru'
+            question_texts = {
+                'ru': "Отлично! Теперь несколько вопросов:\n\n1️⃣ Сколько времени в день ты готова уделять нашему приложению?\n(Ответь в свободной форме)",
+                'uk': "Чудово! Тепер декілька питань:\n\n1️⃣ Скільки часу на день ти готова приділяти нашому застосунку?\n(Відповідь у вільній формі)",
+                'en': "Great! Now a few questions:\n\n1️⃣ How much time per day are you ready to dedicate to our app?\n(Answer in free form)"
+            }
+            question_text = question_texts.get(user_lang, question_texts['ru'])
             await message.answer(question_text)
             await save_message(user_id, 'bot', question_text)
 
@@ -210,7 +251,14 @@ async def handle_work_hours(message: Message, state: FSMContext):
     await update_user_status(user_id, 'asking_experience')
     await state.set_state(UserStates.asking_experience)
     
-    question_text = "2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)"
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
+    question_texts = {
+        'ru': "2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)",
+        'uk': "2️⃣ Чи був у тебе досвід роботи в подібних застосунках або платформах?\n(Якщо так — опиши коротко. Якщо ні — так і напиши)",
+        'en': "2️⃣ Have you had experience working in similar apps or platforms?\n(If yes — describe briefly. If no — just say so)"
+    }
+    question_text = question_texts.get(user_lang, question_texts['ru'])
     await message.answer(question_text)
     await save_message(user_id, 'bot', question_text)
 
@@ -269,7 +317,13 @@ async def handle_experience(message: Message, state: FSMContext, bot):
         reply_markup=admin_review_keyboard(user_id)
     )
     
-    response_text = "Спасибо! Твоя заявка отправлена на рассмотрение 😊"
+    user_lang = user['language'] or 'ru'
+    response_texts = {
+        'ru': "Спасибо! Твоя заявка отправлена на рассмотрение 😊",
+        'uk': "Дякую! Твоя заявка надіслана на розгляд 😊",
+        'en': "Thank you! Your application has been submitted for review 😊"
+    }
+    response_text = response_texts.get(user_lang, response_texts['ru'])
     await message.answer(response_text)
     await save_message(user_id, 'bot', response_text)
 
@@ -286,6 +340,13 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
     await unhide_user_on_activity(user_id)
     
     question = message.text
+    
+    if question.strip().lower() in ['english', 'en', 'англійська', 'английский']:
+        await update_user_language(user_id, 'en')
+        welcome_msg = await get_setting('welcome_message_en')
+        await message.answer(welcome_msg)
+        await save_message(user_id, 'bot', welcome_msg)
+        return
     
     if is_review_request(question):
         await send_reviews(message)
@@ -320,7 +381,13 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
+        user_lang = user['language'] or 'ru'
+        escalate_texts = {
+            'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
+            'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
+            'en': "Forwarding your question to the manager, you'll get an answer soon! 😊"
+        }
+        escalate_text = escalate_texts.get(user_lang, escalate_texts['ru'])
         await message.answer(escalate_text)
         await save_message(user_id, 'bot', escalate_text)
     else:
@@ -367,11 +434,17 @@ async def handle_waiting_admin(message: Message, bot):
     
     await save_message(user_id, 'user', question)
     
-    wait_text = "Твой вопрос передан менеджеру, скоро тебе ответят! 😊"
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
+    wait_texts = {
+        'ru': "Твой вопрос передан менеджеру, скоро тебе ответят! 😊",
+        'uk': "Твоє питання передане менеджеру, скоро тобі відповідять! 😊",
+        'en': "Your question has been forwarded to the manager, you'll get an answer soon! 😊"
+    }
+    wait_text = wait_texts.get(user_lang, wait_texts['ru'])
     await message.answer(wait_text)
     await save_message(user_id, 'bot', wait_text)
     
-    user = await get_user(user_id)
     user_display = get_user_display_name({
         'username': user['username'],
         'first_name': message.from_user.first_name,
@@ -397,6 +470,13 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
     await unhide_user_on_activity(user_id)
     
     question = message.text
+    
+    if question.strip().lower() in ['english', 'en', 'англійська', 'английский']:
+        await update_user_language(user_id, 'en')
+        welcome_msg = await get_setting('welcome_message_en')
+        await message.answer(welcome_msg)
+        await save_message(user_id, 'bot', welcome_msg)
+        return
     
     if is_review_request(question):
         await send_reviews(message)
@@ -438,7 +518,13 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
+        user_lang = user['language'] or 'ru'
+        escalate_texts = {
+            'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
+            'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
+            'en': "Forwarding your question to the manager, you'll get an answer soon! 😊"
+        }
+        escalate_text = escalate_texts.get(user_lang, escalate_texts['ru'])
         await message.answer(escalate_text)
         await save_message(user_id, 'bot', escalate_text)
     else:
@@ -479,6 +565,13 @@ async def handle_question(message: Message, state: FSMContext, bot):
     
     question = message.text
     
+    if question.strip().lower() in ['english', 'en', 'англійська', 'английский']:
+        await update_user_language(user_id, 'en')
+        welcome_msg = await get_setting('welcome_message_en')
+        await message.answer(welcome_msg)
+        await save_message(user_id, 'bot', welcome_msg)
+        return
+    
     if is_review_request(question):
         await send_reviews(message)
         return
@@ -515,7 +608,13 @@ async def handle_question(message: Message, state: FSMContext, bot):
             reply_markup=admin_answer_keyboard(user_id)
         )
         
-        escalate_text = "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊"
+        user_lang = user['language'] or 'ru'
+        escalate_texts = {
+            'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
+            'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
+            'en': "Forwarding your question to the manager, you'll get an answer soon! 😊"
+        }
+        escalate_text = escalate_texts.get(user_lang, escalate_texts['ru'])
         await message.answer(escalate_text)
         await save_message(user_id, 'bot', escalate_text)
     else:
