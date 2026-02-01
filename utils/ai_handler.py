@@ -75,16 +75,26 @@ COUNTRY_KEYWORDS = [
     'катар', 'qatar',
     'бахрейн', 'bahrain',
     'оман', 'oman',
-
+    'україна', 'україна', 'ukraine',
+    'россия', 'russia',
 ]
 
 def detect_country_in_text(text):
     text_lower = text.lower()
     for country in COUNTRY_KEYWORDS:
         if country in text_lower:
-            # Return the original keyword as found (for display)
             return country
     return None
+
+def is_g4f_error(content):
+    c = content.lower()
+    if 'does not exist' in c and ('model' in c or 'https://' in c):
+        return True
+    if 'the model does not' in c:
+        return True
+    if c.startswith('error') and ('provider' in c or 'model' in c):
+        return True
+    return False
 
 async def check_forbidden_topics(message):
     msg_lower = message.lower()
@@ -149,9 +159,18 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
                 for video in videos[:10]:
                     training_materials += f"{video['transcription'][:500]}\n...\n"
     
+    user_lang = user['language'] if user and user['language'] else 'ru'
+    lang_instruction = {
+        'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.",
+        'uk': "ВІДПОВІДАЙ ТІЛЬКИ УКРАЇНІЄЮ МОВОЮ.",
+        'en': "RESPOND ONLY IN ENGLISH."
+    }
+    
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
 СТАТУС УЧАСТИЯ: {group_status}
+ЯЗЫК ПОЛЬЗОВАТЕЛЯ: {user_lang}
+{lang_instruction.get(user_lang, lang_instruction['ru'])}
 
 ПОСЛЕДНИЕ СООБЩЕНИЯ (ВАЖНО ДЛЯ КОНТЕКСТА):
 {recent_context}
@@ -182,6 +201,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
 11. Ответ должен быть в стиле менеджера Valencia
 12. ЛЮБАЯ СТРАНА ПОДХОДИТ — если спрашивают про любую страну, отвечай что она подходит
+13. ВСЕГДА отвечай на том же языке, что и пользователь ({user_lang})
 """
     
     return context_prompt
@@ -597,7 +617,8 @@ async def get_ai_response(user_id, question, is_in_groups=False):
         content = response.choices[0].message.content
         content = content.strip() if hasattr(content, 'strip') else str(content).strip()
         
-        if not content:
+        if not content or is_g4f_error(content):
+            logger.warning(f"g4f error in response content for user {user_id}: {content[:100]}")
             return {
                 'answer': '',
                 'confidence': 0,
@@ -637,6 +658,14 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             result['confidence'] = 50
         if 'escalate' not in result:
             result['escalate'] = result['confidence'] < AI_CONFIDENCE_THRESHOLD
+        
+        if is_g4f_error(str(result.get('answer', ''))):
+            logger.warning(f"g4f error in parsed answer for user {user_id}")
+            return {
+                'answer': '',
+                'confidence': 0,
+                'escalate': True
+            }
         
         logger.info(f"AI response for {user_id}: conf={result['confidence']}, esc={result['escalate']}")
         

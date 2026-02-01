@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 photo_group_cache = {}
 
+REGISTRATION_INTENT_PATTERNS = [
+    'зарегистрироваться', 'зарегистрироваться', 'зарегстрироваться',
+    'зарегістрироваться', 'зарегістрироваться', 'хочу зарегист',
+    'хочу зарегіст', 'want to register', 'i want to register',
+    'реєстрація', 'регистрация', 'зарегіс', 'зарегис',
+    'sign up', 'signup',
+]
+
 async def is_user_rejected(user_id):
     user = await get_user(user_id)
     return user and user['status'] == 'rejected'
@@ -43,6 +51,18 @@ async def check_group_membership(bot, user_id):
     except Exception as e:
         logger.error(f"Error checking group membership for user {user_id}: {e}")
         return False
+
+def is_registration_intent(text):
+    text_lower = text.lower().strip()
+    return any(pattern in text_lower for pattern in REGISTRATION_INTENT_PATTERNS)
+
+def get_already_registered_text(user_lang):
+    texts = {
+        'ru': "Ты уже зарегистрирована! Если есть вопросы по работе — просто спрашивай 😊",
+        'uk': "Ти вже зарегістрована! Якщо є питання по роботі — просто питай 😊",
+        'en': "You're already registered! If you have any work questions — just ask 😊"
+    }
+    return texts.get(user_lang, texts['ru'])
 
 async def auto_detect_and_update_language(user_id, text):
     detected = detect_language(text)
@@ -408,6 +428,8 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
     if await handle_language_switch(message, user_id):
         return
     
+    await auto_detect_and_update_language(user_id, message.text)
+    
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
@@ -491,6 +513,8 @@ async def handle_waiting_admin(message: Message, bot):
     if await handle_language_switch(message, user_id):
         return
     
+    await auto_detect_and_update_language(user_id, message.text)
+    
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
@@ -537,9 +561,17 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
     if await handle_language_switch(message, user_id):
         return
     
+    await auto_detect_and_update_language(user_id, message.text)
+    
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
+    
+    if is_registration_intent(question):
+        already_text = get_already_registered_text(user_lang)
+        await message.answer(already_text)
+        await save_message(user_id, 'bot', already_text)
+        return
     
     if is_review_request(question):
         await send_reviews(message, user_lang)
@@ -638,6 +670,8 @@ async def handle_question(message: Message, state: FSMContext, bot):
     
     if await handle_language_switch(message, user_id):
         return
+    
+    await auto_detect_and_update_language(user_id, message.text)
     
     question = message.text
     user = await get_user(user_id)
