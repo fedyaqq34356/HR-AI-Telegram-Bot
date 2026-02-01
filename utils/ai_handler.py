@@ -19,6 +19,73 @@ client = Client(
     provider=RetryProvider(all_providers, shuffle=True)
 )
 
+COUNTRY_KEYWORDS = [
+    'азербайджан', 'azerbaijan',
+    'казахстан', 'kazakhstan',
+    'грузия', 'georgia',
+    'беларусь', 'belarus',
+    'молдова', 'moldova',
+    'армения', 'armenia',
+    'узбекистан', 'uzbekistan',
+    'туркменистан', 'turkmenistan',
+    'таджикистан', 'tajikistan',
+    'кыргызстан', 'kyrgyzstan',
+    'латвия', 'латва', 'latvia',
+    'литва', 'lithuania',
+    'эстония', 'estonia',
+    'польша', 'poland',
+    'германия', 'germany',
+    'франция', 'france',
+    'италия', 'italy',
+    'испания', 'spain',
+    'турция', 'turkey',
+    'израиль', 'israel',
+    'финляндия', 'finland',
+    'швеция', 'sweden',
+    'норвегия', 'norway',
+    'дания', 'denmark',
+    'швейцария', 'switzerland',
+    'австрия', 'austria',
+    'бельгия', 'belgium',
+    'нидерланды', 'netherlands',
+    'греция', 'greece',
+    'чехия', 'czech',
+    'венгрия', 'hungary',
+    'румыния', 'romania',
+    'болгария', 'bulgaria',
+    'сербия', 'serbia',
+    'хорватия', 'croatia',
+    'словакия', 'slovakia',
+    'словения', 'slovenia',
+    'эаэ', 'оае', 'uae',
+    'сша', 'usa',
+    'канада', 'canada',
+    'австралия', 'australia',
+    'япония', 'japan',
+    'китай', 'china',
+    'индия', 'india',
+    'бразилия', 'brazil',
+    'мексика', 'mexico',
+    'аргентина', 'argentina',
+    'южная корея', 'south korea',
+    'иран', 'iran',
+    'ирак', 'iraq',
+    'саудовская', 'saudi',
+    'кувейт', 'kuwait',
+    'катар', 'qatar',
+    'бахрейн', 'bahrain',
+    'оман', 'oman',
+
+]
+
+def detect_country_in_text(text):
+    text_lower = text.lower()
+    for country in COUNTRY_KEYWORDS:
+        if country in text_lower:
+            # Return the original keyword as found (for display)
+            return country
+    return None
+
 async def check_forbidden_topics(message):
     msg_lower = message.lower()
     topics = await get_forbidden_topics_from_db()
@@ -114,12 +181,23 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 9. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы
 10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
 11. Ответ должен быть в стиле менеджера Valencia
+12. ЛЮБАЯ СТРАНА ПОДХОДИТ — если спрашивают про любую страну, отвечай что она подходит
 """
     
     return context_prompt
 
 async def check_faq_direct_match(question, user_lang='ru'):
     q_lower = question.lower().strip()
+    
+    country = detect_country_in_text(q_lower)
+    if country:
+        country_display = country.capitalize()
+        responses = {
+            'ru': f"У нас работают девочки со всех стран! {country_display} подходит ✅ При регистрации можешь выбрать любую страну 😊",
+            'uk': f"У нас працюють дівчата з усіх країн! {country_display} підходить ✅ При реєстрації можешь вибрати будь-яку країну 😊",
+            'en': f"We have girls working from all countries! {country_display} works perfectly ✅ During registration you can choose any country 😊"
+        }
+        return responses.get(user_lang, responses['ru'])
     
     detailed_info = {
         'ru': """Приветик 😊

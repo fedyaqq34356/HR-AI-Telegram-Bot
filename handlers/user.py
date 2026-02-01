@@ -15,7 +15,7 @@ from database import (
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
-from utils.language_detector import detect_language_request
+from utils.language_detector import detect_language_request, detect_language
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -43,6 +43,15 @@ async def check_group_membership(bot, user_id):
     except Exception as e:
         logger.error(f"Error checking group membership for user {user_id}: {e}")
         return False
+
+async def auto_detect_and_update_language(user_id, text):
+    detected = detect_language(text)
+    user = await get_user(user_id)
+    current_lang = user['language'] or 'ru'
+    if detected != current_lang:
+        await update_user_language(user_id, detected)
+        logger.info(f"Auto-detected language '{detected}' for user {user_id} (was '{current_lang}')")
+    return detected
 
 async def handle_language_switch(message: Message, user_id: int):
     requested_lang = detect_language_request(message.text)
@@ -294,6 +303,8 @@ async def handle_work_hours(message: Message, state: FSMContext):
     if await handle_language_switch(message, user_id):
         return
     
+    await auto_detect_and_update_language(user_id, message.text)
+    
     await save_message(user_id, 'user', message.text)
     
     await state.update_data(work_hours=message.text)
@@ -327,6 +338,8 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     
     if await handle_language_switch(message, user_id):
         return
+    
+    await auto_detect_and_update_language(user_id, message.text)
     
     await save_message(user_id, 'user', message.text)
     
