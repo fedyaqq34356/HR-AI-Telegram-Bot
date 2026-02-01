@@ -345,12 +345,13 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_gro
     }
 
 async def get_ai_response(user_id, question, is_in_groups=False):
+    user = await get_user(user_id)
+    user_lang = user['language'] if user and user['language'] else 'ru'
+    
     if await check_forbidden_topics(question):
-        user = await get_user(user_id)
-        lang = user['language'] if user else 'ru'
         logger.info(f"Forbidden topic detected for user {user_id}")
         return {
-            'answer': UNIVERSAL_RESPONSE.get(lang, UNIVERSAL_RESPONSE['ru']),
+            'answer': UNIVERSAL_RESPONSE.get(user_lang, UNIVERSAL_RESPONSE['ru']),
             'confidence': 100,
             'escalate': False
         }
@@ -359,15 +360,17 @@ async def get_ai_response(user_id, question, is_in_groups=False):
     context_prompt = await build_context_prompt(user_id, question, is_in_groups)
     logger.info(f"Context built for user {user_id}, calling AI...")
     
+    system_prompt_with_lang = SYSTEM_PROMPT.replace('{USER_LANGUAGE}', user_lang)
+    
     try:
-        logger.info(f"Sending request to AI for user {user_id}")
+        logger.info(f"Sending request to AI for user {user_id} with language: {user_lang}")
         
         response = await asyncio.wait_for(
             asyncio.to_thread(
                 client.chat.completions.create,
                 model="",
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt_with_lang},
                     {"role": "user", "content": context_prompt}
                 ]
             ),
