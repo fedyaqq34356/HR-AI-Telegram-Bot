@@ -1,15 +1,32 @@
+def detect_language_request(text):
+    if not text:
+        return None
+    
+    text_lower = text.lower().strip()
+    
+    russian_keywords = ['russian', 'ru', 'русский', 'руский', 'на русском', 'по-русски', 'по русски']
+    ukrainian_keywords = ['ukrainian', 'uk', 'українська', 'украинский', 'украінська', 'на українській', 'на украинском', 'по-українськи', 'по українськи']
+    english_keywords = ['english', 'en', 'англійська', 'английский', 'англиский', 'на английском', 'по-английски', 'по английски']
+    
+    for keyword in russian_keywords:
+        if keyword in text_lower:
+            return 'ru'
+    
+    for keyword in ukrainian_keywords:
+        if keyword in text_lower:
+            return 'uk'
+    
+    for keyword in english_keywords:
+        if keyword in text_lower:
+            return 'en'
+    
+    return None
+
 def detect_language(text):
     if not text:
         return 'ru'
     
     text_lower = text.lower().strip()
-    
-    if text_lower in ['english', 'en', 'англійська', 'английский']:
-        return 'en'
-    if text_lower in ['ukrainian', 'uk', 'українська']:
-        return 'uk'
-    if text_lower in ['russian', 'ru', 'русский']:
-        return 'ru'
     
     ukr_specific_chars = 'ґєії'
     ukr_specific_count = sum(1 for c in text_lower if c in ukr_specific_chars)

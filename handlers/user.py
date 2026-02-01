@@ -15,7 +15,7 @@ from database import (
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
-from utils.language_detector import detect_language
+from utils.language_detector import detect_language_request
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -44,6 +44,34 @@ async def check_group_membership(bot, user_id):
         logger.error(f"Error checking group membership for user {user_id}: {e}")
         return False
 
+async def handle_language_switch(message: Message, user_id: int):
+    requested_lang = detect_language_request(message.text)
+    
+    if requested_lang:
+        await update_user_language(user_id, requested_lang)
+        
+        confirm_texts = {
+            'ru': "✅ Переключаюсь на русский язык",
+            'uk': "✅ Переключаюсь на українську мову",
+            'en': "✅ Switching to English"
+        }
+        
+        welcome_msg = await get_setting(f'welcome_message_{requested_lang}')
+        if not welcome_msg:
+            welcome_msg = await get_setting('welcome_message_ru')
+        
+        confirm_text = confirm_texts.get(requested_lang, confirm_texts['ru'])
+        await message.answer(confirm_text)
+        await save_message(user_id, 'bot', confirm_text)
+        
+        await message.answer(welcome_msg)
+        await save_message(user_id, 'bot', welcome_msg)
+        
+        logger.info(f"User {user_id} switched language to {requested_lang}")
+        return True
+    
+    return False
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
@@ -64,16 +92,12 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     if user and user['status'] == 'rejected':
         return
     
-    detected_lang = detect_language(message.text) if message.text else 'ru'
-    
     if not user:
-        await create_user(user_id, username, language=detected_lang)
+        await create_user(user_id, username, language='ru')
         await update_user_status(user_id, 'chatting')
         await state.set_state(UserStates.chatting)
         
-        welcome_msg = await get_setting(f'welcome_message_{detected_lang}')
-        if not welcome_msg:
-            welcome_msg = await get_setting('welcome_message_ru')
+        welcome_msg = await get_setting('welcome_message_ru')
         
         await message.answer(welcome_msg)
         await save_message(user_id, 'bot', welcome_msg)
@@ -245,6 +269,10 @@ async def handle_work_hours(message: Message, state: FSMContext):
     
     user_id = message.from_user.id
     await unhide_user_on_activity(user_id)
+    
+    if await handle_language_switch(message, user_id):
+        return
+    
     await save_message(user_id, 'user', message.text)
     
     await state.update_data(work_hours=message.text)
@@ -275,6 +303,10 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     from database import create_application, get_photos
     
     await unhide_user_on_activity(user_id)
+    
+    if await handle_language_switch(message, user_id):
+        return
+    
     await save_message(user_id, 'user', message.text)
     
     data = await state.get_data()
@@ -339,14 +371,10 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
     
     await unhide_user_on_activity(user_id)
     
-    question = message.text
-    
-    if question.strip().lower() in ['english', 'en', 'англійська', 'английский']:
-        await update_user_language(user_id, 'en')
-        welcome_msg = await get_setting('welcome_message_en')
-        await message.answer(welcome_msg)
-        await save_message(user_id, 'bot', welcome_msg)
+    if await handle_language_switch(message, user_id):
         return
+    
+    question = message.text
     
     if is_review_request(question):
         await send_reviews(message)
@@ -426,6 +454,9 @@ async def handle_waiting_admin(message: Message, bot):
     
     await unhide_user_on_activity(user_id)
     
+    if await handle_language_switch(message, user_id):
+        return
+    
     question = message.text
     
     if is_review_request(question):
@@ -469,14 +500,10 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
     
     await unhide_user_on_activity(user_id)
     
-    question = message.text
-    
-    if question.strip().lower() in ['english', 'en', 'англійська', 'английский']:
-        await update_user_language(user_id, 'en')
-        welcome_msg = await get_setting('welcome_message_en')
-        await message.answer(welcome_msg)
-        await save_message(user_id, 'bot', welcome_msg)
+    if await handle_language_switch(message, user_id):
         return
+    
+    question = message.text
     
     if is_review_request(question):
         await send_reviews(message)
@@ -563,14 +590,10 @@ async def handle_question(message: Message, state: FSMContext, bot):
     
     await unhide_user_on_activity(user_id)
     
-    question = message.text
-    
-    if question.strip().lower() in ['english', 'en', 'англійська', 'английский']:
-        await update_user_language(user_id, 'en')
-        welcome_msg = await get_setting('welcome_message_en')
-        await message.answer(welcome_msg)
-        await save_message(user_id, 'bot', welcome_msg)
+    if await handle_language_switch(message, user_id):
         return
+    
+    question = message.text
     
     if is_review_request(question):
         await send_reviews(message)
