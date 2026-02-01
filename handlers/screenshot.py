@@ -73,10 +73,30 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
             
-            approval_msg = await get_setting('approval_message')
-            await message.answer(approval_msg, reply_markup=groups_keyboard())
+            user_lang = user_data['language'] or 'ru'
             
-            await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+            approval_msg = await get_setting('approval_message')
+            
+            if user_lang == 'en':
+                await message.answer(approval_msg)
+                await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
+                
+                training_text = """Review the training
+
+After registering:
+- Visit the website
+- Our website has posts and videos with comprehensive information.
+- Be sure to read them!
+
+If you have any questions, please write to me. I am always available and happy to help 😊
+
+https://trainingforhost.wordpress.com"""
+                
+                await message.answer(training_text)
+            else:
+                await message.answer(approval_msg, reply_markup=groups_keyboard())
+                await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+            
             logger.info(f"Screenshot processed successfully for user {user_id}, ID: {extracted_id}")
             
         elif caption_text and caption_text.isdigit() and 6 <= len(caption_text) <= 15:
@@ -89,10 +109,30 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
             
-            approval_msg = await get_setting('approval_message')
-            await message.answer(approval_msg, reply_markup=groups_keyboard())
+            user_lang = user_data['language'] or 'ru'
             
-            await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+            approval_msg = await get_setting('approval_message')
+            
+            if user_lang == 'en':
+                await message.answer(approval_msg)
+                await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
+                
+                training_text = """Review the training
+
+After registering:
+- Visit the website
+- Our website has posts and videos with comprehensive information.
+- Be sure to read them!
+
+If you have any questions, please write to me. I am always available and happy to help 😊
+
+https://trainingforhost.wordpress.com"""
+                
+                await message.answer(training_text)
+            else:
+                await message.answer(approval_msg, reply_markup=groups_keyboard())
+                await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+            
             logger.info(f"Screenshot with caption processed for user {user_id}: {caption_text}")
             
         else:
@@ -102,12 +142,27 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
                 message.photo[-1].file_id,
                 caption=f"📸 Скриншот\n👤 {user_display}\n🔗 {user_link}\n\n⚠️ ID не распознан"
             )
-            await message.answer("Не могу распознать ID на скриншоте. Пожалуйста, пришли его вручную текстом (только цифры).")
+            
+            user_lang = user_data['language'] or 'ru'
+            not_recognized_texts = {
+                'ru': "Не могу распознать ID на скриншоте. Пожалуйста, пришли его вручную текстом (только цифры).",
+                'uk': "Не можу розпізнати ID на скріншоті. Будь ласка, надішли його вручну текстом (тільки цифри).",
+                'en': "Cannot recognize ID on screenshot. Please send it manually as text (digits only)."
+            }
+            await message.answer(not_recognized_texts.get(user_lang, not_recognized_texts['ru']))
             logger.info(f"Sent manual ID request to user {user_id}")
             
     except Exception as e:
         logger.error(f"Error processing screenshot for user {user_id}: {e}", exc_info=True)
-        await message.answer("Произошла ошибка при обработке скриншота. Попробуй ещё раз или напиши ID вручную.")
+        
+        user_data = await get_user(user_id)
+        user_lang = user_data['language'] if user_data else 'ru'
+        error_texts = {
+            'ru': "Произошла ошибка при обработке скриншота. Попробуй ещё раз или напиши ID вручную.",
+            'uk': "Сталася помилка при обробці скріншота. Спробуй ще раз або напиши ID вручну.",
+            'en': "An error occurred while processing the screenshot. Try again or send the ID manually."
+        }
+        await message.answer(error_texts.get(user_lang, error_texts['ru']))
 
 @router.message(UserStates.waiting_screenshot, F.text)
 async def handle_manual_id(message: Message, bot, state: FSMContext):
@@ -121,17 +176,29 @@ async def handle_manual_id(message: Message, bot, state: FSMContext):
     
     manual_id = message.text.strip()
     
+    user_data = await get_user(user_id)
+    user_lang = user_data['language'] or 'ru'
+    
     if not manual_id.isdigit():
         logger.info(f"Manual ID from user {user_id} is not digits: '{manual_id}'")
-        await message.answer("Пожалуйста, пришли только цифры ID (например: 351681973)")
+        invalid_texts = {
+            'ru': "Пожалуйста, пришли только цифры ID (например: 351681973)",
+            'uk': "Будь ласка, надішли тільки цифри ID (наприклад: 351681973)",
+            'en': "Please send only ID digits (for example: 351681973)"
+        }
+        await message.answer(invalid_texts.get(user_lang, invalid_texts['ru']))
         return
     
     if len(manual_id) < 6 or len(manual_id) > 15:
         logger.info(f"Manual ID from user {user_id} has invalid length: {len(manual_id)}")
-        await message.answer("ID должен содержать от 6 до 15 цифр. Проверь и отправь ещё раз.")
+        length_texts = {
+            'ru': "ID должен содержать от 6 до 15 цифр. Проверь и отправь ещё раз.",
+            'uk': "ID повинен містити від 6 до 15 цифр. Перевір і надішли ще раз.",
+            'en': "ID must contain from 6 to 15 digits. Check and send again."
+        }
+        await message.answer(length_texts.get(user_lang, length_texts['ru']))
         return
     
-    user_data = await get_user(user_id)
     user_display = get_user_display_name({
         'username': user_data['username'],
         'first_name': message.from_user.first_name,
@@ -152,7 +219,25 @@ async def handle_manual_id(message: Message, bot, state: FSMContext):
     await state.set_state(UserStates.registered)
     
     approval_msg = await get_setting('approval_message')
-    await message.answer(approval_msg, reply_markup=groups_keyboard())
     
-    await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+    if user_lang == 'en':
+        await message.answer(approval_msg)
+        await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
+        
+        training_text = """Review the training
+
+After registering:
+- Visit the website
+- Our website has posts and videos with comprehensive information.
+- Be sure to read them!
+
+If you have any questions, please write to me. I am always available and happy to help 😊
+
+https://trainingforhost.wordpress.com"""
+        
+        await message.answer(training_text)
+    else:
+        await message.answer(approval_msg, reply_markup=groups_keyboard())
+        await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+    
     logger.info(f"Manual ID processed successfully for user {user_id}: {manual_id}")

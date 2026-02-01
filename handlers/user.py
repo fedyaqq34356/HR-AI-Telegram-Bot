@@ -124,25 +124,16 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     if not user:
         await create_user(user_id, username, language='ru')
         
-        if is_in_group:
-            await update_user_status(user_id, 'registered')
-            await state.set_state(UserStates.registered)
-            
-            return_texts = {
-                'ru': "Привет! Чем могу помочь? 😊",
-                'uk': "Привіт! Чим можу допомогти? 😊",
-                'en': "Hi! How can I help? 😊"
-            }
-            return_text = return_texts.get('ru', return_texts['ru'])
-            await message.answer(return_text)
-            await save_message(user_id, 'bot', return_text)
-        else:
-            await update_user_status(user_id, 'chatting')
-            await state.set_state(UserStates.chatting)
-            
-            welcome_msg = await get_setting('welcome_message_ru')
-            await message.answer(welcome_msg)
-            await save_message(user_id, 'bot', welcome_msg)
+        greeting_text = "👋 Hello! Привіт! Привет!"
+        await message.answer(greeting_text)
+        
+        language_choice_text = """Выберите язык - напишите ru
+Оберіть мову - напишіть uk
+Choose language - type en"""
+        
+        await message.answer(language_choice_text)
+        await state.set_state(UserStates.choosing_language)
+        
     else:
         if is_in_group and user['status'] not in ['registered', 'approved']:
             await update_user_status(user_id, 'registered')
@@ -179,6 +170,55 @@ async def cmd_start(message: Message, state: FSMContext, bot):
         }
         new_state = status_to_state.get(user['status'], UserStates.chatting)
         await state.set_state(new_state)
+
+@router.message(UserStates.choosing_language, F.text)
+async def handle_language_choice(message: Message, state: FSMContext, bot):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        return
+    
+    choice = message.text.strip().lower()
+    
+    if choice == 'ru':
+        chosen_lang = 'ru'
+    elif choice == 'uk':
+        chosen_lang = 'uk'
+    elif choice == 'en':
+        chosen_lang = 'en'
+    else:
+        repeat_text = """Выберите язык - напишите ru
+Оберіть мову - напишіть uk
+Choose language - type en"""
+        await message.answer(repeat_text)
+        return
+    
+    await update_user_language(user_id, chosen_lang)
+    
+    is_in_group = await check_group_membership(bot, user_id)
+    
+    if is_in_group:
+        await update_user_status(user_id, 'registered')
+        await state.set_state(UserStates.registered)
+        
+        return_texts = {
+            'ru': "Привет! Чем могу помочь? 😊",
+            'uk': "Привіт! Чим можу допомогти? 😊",
+            'en': "Hi! How can I help? 😊"
+        }
+        return_text = return_texts.get(chosen_lang, return_texts['ru'])
+        await message.answer(return_text)
+        await save_message(user_id, 'bot', return_text)
+    else:
+        await update_user_status(user_id, 'chatting')
+        await state.set_state(UserStates.chatting)
+        
+        welcome_msg = await get_setting(f'welcome_message_{chosen_lang}')
+        if not welcome_msg:
+            welcome_msg = await get_setting('welcome_message_ru')
+        
+        await message.answer(welcome_msg)
+        await save_message(user_id, 'bot', welcome_msg)
 
 @router.message(UserStates.chatting, F.photo)
 async def handle_photo_in_chatting(message: Message, state: FSMContext):

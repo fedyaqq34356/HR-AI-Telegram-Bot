@@ -1,6 +1,7 @@
 from aiogram.fsm.state import State, StatesGroup
 
 class UserStates(StatesGroup):
+    choosing_language = State()
     chatting = State()
     waiting_photos = State()
     asking_work_hours = State()
