@@ -27,6 +27,10 @@ from database import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+MAIN_MENU_BUTTONS = ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
+                     "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
+                     "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]
+
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
@@ -82,9 +86,7 @@ async def save_new_welcome(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
-    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
-                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
+    if message.text in MAIN_MENU_BUTTONS:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
@@ -145,9 +147,12 @@ async def save_training_link(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
-    if message.text == "🔙 Отмена":
+    if message.text in MAIN_MENU_BUTTONS:
         await state.clear()
-        await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        if message.text == "🔙 Отмена":
+            await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        else:
+            await message.answer("❌ Изменение ссылки отменено", reply_markup=admin_main_menu())
         return
     
     await set_setting('training_group_link', message.text)
@@ -160,9 +165,12 @@ async def save_chat_link(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
-    if message.text == "🔙 Отмена":
+    if message.text in MAIN_MENU_BUTTONS:
         await state.clear()
-        await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        if message.text == "🔙 Отмена":
+            await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
+        else:
+            await message.answer("❌ Изменение ссылки отменено", reply_markup=admin_main_menu())
         return
     
     await set_setting('chat_group_link', message.text)
@@ -361,7 +369,7 @@ async def hide_user_handler(callback: CallbackQuery, state: FSMContext):
     user = await get_user(user_id)
     username_display = f"@{user['username']}" if user['username'] else f"ID{user_id}"
     
-    await callback.message.edit_text(f"✅ {username_display} скрыт из списка. Появится снова когда написать")
+    await callback.message.edit_text(f"✅ {username_display} скрыт из списка. Появится снова когда напишет")
     await callback.answer("Скрыт")
     logger.info(f"Admin manually hid user {user_id}")
 
@@ -562,9 +570,7 @@ async def admin_answer_any(message: Message, state: FSMContext, bot):
     if message.from_user.id != ADMIN_ID:
         return
     
-    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
-                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
+    if message.text in MAIN_MENU_BUTTONS:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
@@ -761,9 +767,7 @@ async def add_forbidden_topic_name(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
-    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
-                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
+    if message.text in MAIN_MENU_BUTTONS:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
@@ -784,9 +788,7 @@ async def add_forbidden_topic_keywords(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
-    if message.text in ["📝 Изменить приветствие", "📊 Статистика", "💬 Переписки", 
-                         "✉️ Написать девушке", "📋 Логи", "🚫 Запретные темы", 
-                         "📥 Экспорт переписок", "🔗 Ссылки на группы", "🔙 Отмена"]:
+    if message.text in MAIN_MENU_BUTTONS:
         await state.clear()
         if message.text == "🔙 Отмена":
             await message.answer("❌ Действие отменено", reply_markup=admin_main_menu())
