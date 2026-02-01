@@ -78,7 +78,6 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             approval_msg = await get_setting('approval_message')
             
             if user_lang == 'en':
-                await message.answer(approval_msg)
                 await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
                 
                 training_text = """Review the training
@@ -94,8 +93,9 @@ https://trainingforhost.wordpress.com"""
                 
                 await message.answer(training_text)
             else:
-                await message.answer(approval_msg, reply_markup=groups_keyboard())
-                await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+                keyboard = await groups_keyboard()
+                await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
+                await message.answer(approval_msg)
             
             logger.info(f"Screenshot processed successfully for user {user_id}, ID: {extracted_id}")
             
@@ -114,7 +114,6 @@ https://trainingforhost.wordpress.com"""
             approval_msg = await get_setting('approval_message')
             
             if user_lang == 'en':
-                await message.answer(approval_msg)
                 await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
                 
                 training_text = """Review the training
@@ -130,8 +129,9 @@ https://trainingforhost.wordpress.com"""
                 
                 await message.answer(training_text)
             else:
-                await message.answer(approval_msg, reply_markup=groups_keyboard())
-                await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+                keyboard = await groups_keyboard()
+                await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
+                await message.answer(approval_msg)
             
             logger.info(f"Screenshot with caption processed for user {user_id}: {caption_text}")
             
@@ -221,7 +221,6 @@ async def handle_manual_id(message: Message, bot, state: FSMContext):
     approval_msg = await get_setting('approval_message')
     
     if user_lang == 'en':
-        await message.answer(approval_msg)
         await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
         
         training_text = """Review the training
@@ -237,7 +236,8 @@ https://trainingforhost.wordpress.com"""
         
         await message.answer(training_text)
     else:
-        await message.answer(approval_msg, reply_markup=groups_keyboard())
-        await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅")
+        keyboard = await groups_keyboard()
+        await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
+        await message.answer(approval_msg)
     
     logger.info(f"Manual ID processed successfully for user {user_id}: {manual_id}")
