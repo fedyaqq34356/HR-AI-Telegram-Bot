@@ -94,13 +94,26 @@ async def cmd_start(message: Message, state: FSMContext, bot):
     
     if not user:
         await create_user(user_id, username, language='ru')
-        await update_user_status(user_id, 'chatting')
-        await state.set_state(UserStates.chatting)
         
-        welcome_msg = await get_setting('welcome_message_ru')
-        
-        await message.answer(welcome_msg)
-        await save_message(user_id, 'bot', welcome_msg)
+        if is_in_group:
+            await update_user_status(user_id, 'registered')
+            await state.set_state(UserStates.registered)
+            
+            return_texts = {
+                'ru': "Привет! Чем могу помочь? 😊",
+                'uk': "Привіт! Чим можу допомогти? 😊",
+                'en': "Hi! How can I help? 😊"
+            }
+            return_text = return_texts.get('ru', return_texts['ru'])
+            await message.answer(return_text)
+            await save_message(user_id, 'bot', return_text)
+        else:
+            await update_user_status(user_id, 'chatting')
+            await state.set_state(UserStates.chatting)
+            
+            welcome_msg = await get_setting('welcome_message_ru')
+            await message.answer(welcome_msg)
+            await save_message(user_id, 'bot', welcome_msg)
     else:
         if is_in_group and user['status'] not in ['registered', 'approved']:
             await update_user_status(user_id, 'registered')
@@ -108,11 +121,18 @@ async def cmd_start(message: Message, state: FSMContext, bot):
         
         user_lang = user['language'] or 'ru'
         
-        return_texts = {
-            'ru': "С возвращением! Чем могу помочь? 😊",
-            'uk': "З поверненням! Чим можу допомогти? 😊",
-            'en': "Welcome back! How can I help? 😊"
-        }
+        if is_in_group:
+            return_texts = {
+                'ru': "Привет! Чем могу помочь? 😊",
+                'uk': "Привіт! Чим можу допомогти? 😊",
+                'en': "Hi! How can I help? 😊"
+            }
+        else:
+            return_texts = {
+                'ru': "С возвращением! Чем могу помочь? 😊",
+                'uk': "З поверненням! Чим можу допомогти? 😊",
+                'en': "Welcome back! How can I help? 😊"
+            }
         
         return_text = return_texts.get(user_lang, return_texts['ru'])
         await message.answer(return_text)

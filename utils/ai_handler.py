@@ -104,12 +104,12 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 
 ИНСТРУКЦИЯ:
 1. ВНИМАТЕЛЬНО прочитай последние 3-5 сообщений - это контекст текущего разговора
-2. Если вопрос связан с предыдущим сообщением (например "просто ждать?" после "аккаунт активируют") - отвечай сам с высокой confidence
+2. Если вопрос связан с предыдущим сообщением - отвечай сам с высокой confidence (85+)
 3. Проверь, есть ли точный ответ в FAQ
 4. Проверь обученные ответы
 5. Если девушка ЕСТЬ в группе - используй обучающие материалы для ответа
-6. Если это простая эмоция (супер, класс, ок) - отвечай поддерживающе с confidence 90+
-7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 80+
+6. Если это простая эмоция (супер, класс, ок, добре) - отвечай поддерживающе с confidence 95+, НЕ ЭСКАЛИРУЙ
+7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 85+
 8. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
 9. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы
 10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
@@ -138,7 +138,7 @@ async def check_faq_direct_match(question):
 
 💵 От 50$ в день при активной работе
 
-🌍 Аудитория: США, Европа, Англия, ОАЭ, арабские страны
+🌍 Аудитория: США, Европа, Англия, ОАЕ, арабские страны
 👨‍💼 Многие мужчины приходят именно за общением, а не за 🔞
 🌐 Встроенный переводчик — английский не обязателен
 🕒 Свободный график — работаешь, когда удобно
@@ -175,19 +175,43 @@ async def check_faq_direct_match(question):
 
 Если формат подходит — жду фото 👋"""
     
+    simple_reactions = {
+        'ок': 'Отлично! 😊',
+        'окей': 'Супер! 👍',
+        'хорошо': 'Отлично! 😊',
+        'добре': 'Чудово! 😊',
+        'понятно': 'Супер! 😊',
+        'зрозуміло': 'Добре! 😊',
+        'класс': 'Рада помочь! 😊',
+        'супер': '👍',
+        'круто': '🔥',
+        'отлично': '💪',
+        'ясно': '👌',
+        'чудово': '😊',
+        'fine': 'Great! 😊',
+        'okay': 'Perfect! 👍',
+        'ok': 'Great! 😊',
+        'good': 'Nice! 😊',
+        'great': 'Awesome! 🔥',
+        'nice': '👍',
+        'cool': '😊'
+    }
+    
+    for reaction, response in simple_reactions.items():
+        if q_lower == reaction:
+            return response
+    
     faq_direct = {
         'привет': 'Привет! Чем могу помочь? 😊',
         'здравствуй': 'Здравствуй! Рада тебя видеть! Есть вопросы? 😊',
-        'как дела': 'Отлично, помогаю девочкам разобраться с регистрацией! У тебя как? 😊',
-        'что делаешь': 'Работаю, консультирую новеньких по Halo. А ты готова начать? 💪',
+        'вітаю': 'Вітаю! Чим можу допомогти? 😊',
+        'привіт': 'Привіт! Є питання? 😊',
+        'як дела': 'Чудово! А у тебе як? 😊',
+        'как дела': 'Отлично! У тебя как? 😊',
         'кто ты': 'Я менеджер агентства Valencia, помогаю девочкам начать работу в Halo 😊',
-        'хорошо': 'Отлично! Если что-то непонятно — обращайся 👍',
-        'понятно': 'Супер! Рада, что помогла 😊',
-        'спасибо': 'Пожалуйста! Если будут ещё вопросы — пиши 😊',
-        'ок': 'Отлично! Я всегда на связи 😊',
-        'супер': 'Рада помочь! Если будут вопросы — обращайся 💪',
-        'класс': 'Отлично! Всегда рада помочь 😊',
-        'круто': '👍 Если что-то непонятно — пиши!',
+        'спасибо': 'Пожалуйста! 😊',
+        'дякую': 'Будь ласка! 😊',
+        'thanks': "You're welcome! 😊",
         'есть работа для мужчин': 'К сожалению, нет. Мы работаем только с девушками 😊',
         'нужно ли показывать лицо': 'Да, лицо показывать обязательно. Это важно для общения с пользователями 😊',
         'в звонке что происходит': 'В приватном звонке ты общаешься 1 на 1 с мужчиной. Там может происходить что угодно по обоюдному согласию. За каждую минуту получаешь деньги 💰 Есть встроенный переводчик! 😊',
@@ -207,7 +231,7 @@ async def check_faq_direct_match(question):
         return detailed_info
     
     waiting_keywords = ['просто ждать', 'мне просто ждать', 'мне ждать', 'просто жду',
-                       'что дальше', 'и все', 'теперь жду']
+                       'и все', 'теперь жду', 'просто чекати', 'мені чекати']
     if any(kw in q_lower for kw in waiting_keywords):
         return 'Да, просто жди 😊 Активация обычно происходит на следующий будний день. Как только активируют — сможешь начать зарабатывать! 💪'
     
@@ -295,49 +319,115 @@ async def check_faq_direct_match(question):
     
     return None
 
+async def is_contextual_question(question, history):
+    q_lower = question.lower().strip()
+    
+    what_to_do_variants = [
+        'що мені робити', 'что мне делать', 'що робити', 'что делать',
+        'що мені', 'что мне', 'що далі', 'что дальше', 
+        'що тепер', 'что теперь', 'що зараз', 'что сейчас',
+        'what should i do', 'what now', 'what next', 'what to do'
+    ]
+    
+    if not any(variant in q_lower for variant in what_to_do_variants):
+        return None
+    
+    if not history or len(history) < 2:
+        return None
+    
+    last_bot_message = None
+    for msg in reversed(history):
+        if msg['role'] == 'bot':
+            last_bot_message = msg['content']
+            break
+    
+    if not last_bot_message:
+        return None
+    
+    last_bot_lower = last_bot_message.lower()
+    
+    instructions_keywords = [
+        'інструкц', 'инструкц', 'instruction',
+        'реєстр', 'регистр', 'registr',
+        'надішли', 'пришли', 'send',
+        'скрин', 'screenshot',
+        'активуют', 'активують', 'activate',
+        'офіс', 'офис', 'office'
+    ]
+    
+    if any(kw in last_bot_lower for kw in instructions_keywords):
+        if 'скрин' in last_bot_lower or 'screenshot' in last_bot_lower:
+            return {
+                'ru': 'Просто жди активации от офиса. Обычно это происходит на следующий будний день. Как только активируют — сможешь начать работать! 😊',
+                'uk': 'Просто чекай активації від офісу. Зазвичай це відбувається наступного робочого дня. Як тільки активують — зможеш почати працювати! 😊',
+                'en': 'Just wait for activation from the office. Usually it happens the next business day. Once activated — you can start working! 😊'
+            }
+        elif 'фото' in last_bot_lower or 'photo' in last_bot_lower:
+            return {
+                'ru': 'Нужно отправить мне 2-3 своих фото. После этого я отправлю их на рассмотрение офису 😊',
+                'uk': 'Потрібно надіслати мені 2-3 свої фото. Після цього я відправлю їх на розгляд офісу 😊',
+                'en': 'You need to send me 2-3 photos of yourself. After that I will send them for office review 😊'
+            }
+        else:
+            return {
+                'ru': 'Если я уже отправила инструкции — просто следуй им шаг за шагом. Если что-то непонятно — спрашивай конкретно! 😊',
+                'uk': 'Якщо я вже надіслала інструкції — просто дотримуйся їх крок за кроком. Якщо щось незрозуміло — питай конкретно! 😊',
+                'en': 'If I already sent instructions — just follow them step by step. If something is unclear — ask specifically! 😊'
+            }
+    
+    return None
+
 async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_groups=False):
-    logger.info(f"Starting AI request with retry for user {user_id}, max_retries={max_retries}")
+    logger.info(f"Starting AI request for user {user_id}")
     
     direct_answer = await check_faq_direct_match(question)
     if direct_answer:
-        logger.info(f"Direct FAQ match found for user {user_id}")
+        logger.info(f"Direct FAQ match for user {user_id}")
         return {
             'answer': direct_answer,
             'confidence': 95,
             'escalate': False
         }
     
+    user = await get_user(user_id)
+    history = await get_messages(user_id, limit=10)
+    contextual_answer = await is_contextual_question(question, history)
+    if contextual_answer:
+        user_lang = user['language'] if user and user['language'] else 'ru'
+        answer = contextual_answer.get(user_lang, contextual_answer.get('ru', ''))
+        logger.info(f"Contextual question detected for user {user_id}")
+        return {
+            'answer': answer,
+            'confidence': 90,
+            'escalate': False
+        }
+    
     for attempt in range(max_retries):
         try:
-            logger.info(f"Attempt {attempt + 1}/{max_retries} for user {user_id}")
+            logger.info(f"AI attempt {attempt + 1}/{max_retries} for user {user_id}")
             response = await get_ai_response(user_id, question, is_in_groups)
             if response['confidence'] > 0 or response['escalate']:
-                logger.info(f"AI response successful on attempt {attempt + 1} for user {user_id}")
+                logger.info(f"AI response successful for user {user_id}")
                 return response
-            logger.warning(f"AI returned 0 confidence on attempt {attempt + 1} for user {user_id}")
+            logger.warning(f"AI returned 0 confidence for user {user_id}")
         except asyncio.TimeoutError:
-            logger.error(f"AI timeout on attempt {attempt + 1}/{max_retries} for user {user_id}")
+            logger.error(f"AI timeout for user {user_id}")
             if attempt == max_retries - 1:
-                logger.error(f"All {max_retries} attempts timed out for user {user_id}, escalating")
                 return {
                     'answer': '',
                     'confidence': 0,
                     'escalate': True
                 }
         except Exception as e:
-            logger.error(f"AI retry attempt {attempt + 1}/{max_retries} failed for user {user_id}: {e}", exc_info=True)
+            logger.error(f"AI error for user {user_id}: {e}")
             if attempt == max_retries - 1:
-                logger.error(f"All {max_retries} attempts failed for user {user_id}, escalating")
                 return {
                     'answer': '',
                     'confidence': 0,
                     'escalate': True
                 }
-            wait_time = 2
-            logger.info(f"Waiting {wait_time}s before retry for user {user_id}")
-            await asyncio.sleep(wait_time)
+            await asyncio.sleep(2)
     
-    logger.error(f"Exhausted all retries for user {user_id}, escalating")
     return {
         'answer': '',
         'confidence': 0,
@@ -349,7 +439,7 @@ async def get_ai_response(user_id, question, is_in_groups=False):
     user_lang = user['language'] if user and user['language'] else 'ru'
     
     if await check_forbidden_topics(question):
-        logger.info(f"Forbidden topic detected for user {user_id}")
+        logger.info(f"Forbidden topic for user {user_id}")
         return {
             'answer': UNIVERSAL_RESPONSE.get(user_lang, UNIVERSAL_RESPONSE['ru']),
             'confidence': 100,
@@ -358,12 +448,11 @@ async def get_ai_response(user_id, question, is_in_groups=False):
     
     logger.info(f"Building context for user {user_id}")
     context_prompt = await build_context_prompt(user_id, question, is_in_groups)
-    logger.info(f"Context built for user {user_id}, calling AI...")
     
     system_prompt_with_lang = SYSTEM_PROMPT.replace('{USER_LANGUAGE}', user_lang)
     
     try:
-        logger.info(f"Sending request to AI for user {user_id} with language: {user_lang}")
+        logger.info(f"Calling AI for user {user_id}")
         
         response = await asyncio.wait_for(
             asyncio.to_thread(
@@ -377,18 +466,7 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             timeout=30.0
         )
         
-        logger.info(f"Received response from AI for user {user_id}")
-        
-        if response is None:
-            logger.error(f"AI returned None response for user {user_id}")
-            return {
-                'answer': '',
-                'confidence': 0,
-                'escalate': True
-            }
-        
-        if not hasattr(response, 'choices') or not response.choices:
-            logger.error(f"AI response has no choices for user {user_id}")
+        if not response or not hasattr(response, 'choices') or not response.choices:
             return {
                 'answer': '',
                 'confidence': 0,
@@ -396,21 +474,14 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             }
         
         content = response.choices[0].message.content
-        
-        if hasattr(content, 'strip'):
-            content = content.strip()
-        else:
-            content = str(content).strip()
+        content = content.strip() if hasattr(content, 'strip') else str(content).strip()
         
         if not content:
-            logger.warning(f"Empty response from AI for user {user_id}")
             return {
                 'answer': '',
                 'confidence': 0,
                 'escalate': True
             }
-        
-        logger.info(f"Raw AI response for user {user_id}: {content[:200]}")
         
         if content.startswith('```json'):
             content = content[7:-3].strip()
@@ -418,19 +489,14 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             content = content[3:-3].strip()
         
         try:
-            logger.info(f"Parsing JSON response for user {user_id}")
             result = json.loads(content)
-            logger.info(f"JSON parsed successfully for user {user_id}")
         except json.JSONDecodeError:
-            logger.warning(f"AI returned non-JSON text for user {user_id}: {content[:100]}")
-            
             simple_responses = ['привет', 'здравствуй', 'хорошо', 'спасибо', 'ок', 'понятно', 
-                              'супер', 'класс', 'круто', 'отлично']
+                              'супер', 'класс', 'круто', 'отлично', 'добре', 'ясно']
             q_lower = question.lower().strip()
             
-            confidence = 85 if any(greeting in q_lower for greeting in simple_responses) else 60
+            confidence = 90 if any(greeting in q_lower for greeting in simple_responses) else 70
             
-            logger.info(f"Non-JSON response, setting confidence to {confidence} for user {user_id}")
             return {
                 'answer': content,
                 'confidence': confidence,
@@ -438,10 +504,9 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             }
         
         if not isinstance(result, dict):
-            logger.warning(f"AI returned non-dict result for user {user_id}")
             return {
                 'answer': str(result),
-                'confidence': 60,
+                'confidence': 70,
                 'escalate': False
             }
         
@@ -452,13 +517,13 @@ async def get_ai_response(user_id, question, is_in_groups=False):
         if 'escalate' not in result:
             result['escalate'] = result['confidence'] < AI_CONFIDENCE_THRESHOLD
         
-        logger.info(f"AI response for user {user_id}: confidence={result['confidence']}, escalate={result['escalate']}, answer_length={len(result['answer'])}")
+        logger.info(f"AI response for {user_id}: conf={result['confidence']}, esc={result['escalate']}")
         
         return result
         
     except asyncio.TimeoutError:
-        logger.error(f"AI request timeout (30s) for user {user_id}")
+        logger.error(f"AI timeout for {user_id}")
         raise
     except Exception as e:
-        logger.error(f"AI error for user {user_id}: {e}", exc_info=True)
+        logger.error(f"AI error for {user_id}: {e}")
         raise
