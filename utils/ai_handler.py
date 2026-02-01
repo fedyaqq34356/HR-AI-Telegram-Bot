@@ -109,7 +109,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 4. Проверь обученные ответы
 5. Если девушка ЕСТЬ в группе - используй обучающие материалы для ответа
 6. Если это простая эмоция (супер, класс, ок, добре) - отвечай поддерживающе с confidence 95+, НЕ ЭСКАЛИРУЙ
-7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 85+
+7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 90+
 8. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
 9. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы
 10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
@@ -122,7 +122,7 @@ async def check_faq_direct_match(question, user_lang='ru'):
     q_lower = question.lower().strip()
     
     detailed_info = {
-        'ru': """Приветик
+        'ru': """Приветик 😊
 
 🌟 РАБОТА СТРИМ-МОДЕЛЬЮ В ПРИЛОЖЕНИИ HALO 🌟
 
@@ -175,7 +175,7 @@ async def check_faq_direct_match(question, user_lang='ru'):
 ❌ Тест не пройден — аккаунт блокируется
 
 Если формат подходит — жду фото 👋""",
-        'uk': """Привітик
+        'uk': """Привітик 😊
 
 🌟 РОБОТА СТРІМ-МОДЕЛЛЮ В ЗАСТОСУНКУ HALO 🌟
 
@@ -228,7 +228,7 @@ async def check_faq_direct_match(question, user_lang='ru'):
 ❌ Тест не пройдено — акаунт блокується
 
 Якщо формат підходить — чекаю фото 👋""",
-        'en': """Hello
+        'en': """Hello 😊
 
 🌟 WORK AS A STREAM MODEL IN HALO APP 🌟
 
@@ -330,15 +330,24 @@ If the format suits — waiting for photos 👋"""
             lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(user_lang, 0)
             return answers[lang_index]
     
-    detailed_keywords = {
-        'ru': ['подробнее', 'больше информации', 'расскажи подробнее', 'можно подробнее', 'хочу узнать больше', 'детальнее'],
-        'uk': ['детальніше', 'більше інформації', 'розкажи детальніше', 'можна детальніше', 'хочу дізнатись більше'],
-        'en': ['more details', 'more information', 'tell me more', 'want to know more', 'details']
-    }
-    if any(kw in q_lower for kws in detailed_keywords.values() for kw in kws):
+    detailed_keywords = [
+        'подробнее', 'больше информации', 'расскажи подробнее', 
+        'детальніше', 'більше інформації', 'розкажи детальніше', 
+        'more details', 'more information', 'tell me more',
+        'про приложен', 'о приложени', 'about app',
+        'інформаці', 'информаци', 'information',
+        'можно информаци', 'можна інформаці', 'can i get info'
+    ]
+    
+    if any(kw in q_lower for kw in detailed_keywords):
         return detailed_info.get(user_lang, detailed_info['ru'])
     
-    waiting_keywords = ['просто ждать', 'мне просто ждать', 'мне ждать', 'просто жду', 'и все', 'теперь жду', 'просто чекати', 'мені чекати', 'just wait', 'should i wait']
+    waiting_keywords = [
+        'просто ждать', 'мне просто ждать', 'мне ждать', 'просто жду', 'и все', 'теперь жду', 
+        'просто чекати', 'мені чекати', 'просто чекаю', 'і все', 'тепер чекаю',
+        'just wait', 'should i wait', 'wait now'
+    ]
+    
     if any(kw in q_lower for kw in waiting_keywords):
         responses = {
             'ru': 'Да, просто жди 😊 Активация обычно происходит на следующий будний день. Как только активируют — сможешь начать зарабатывать! 💪',
@@ -346,14 +355,6 @@ If the format suits — waiting for photos 👋"""
             'en': 'Yes, just wait 😊 Activation usually happens the next business day. Once activated — you can start earning! 💪'
         }
         return responses.get(user_lang, responses['ru'])
-    
-    info_keywords = {
-        'ru': ['можно информацию', 'информацию о приложении', 'расскажи о приложении', 'про приложение', 'что за приложение'],
-        'uk': ['можна інформацію', 'інформацію про застосунок', 'розкажи про застосунок', 'про застосунок', 'що за застосунок'],
-        'en': ['can i have information', 'information about app', 'tell about app', 'about the app', 'app information']
-    }
-    if any(kw in q_lower for kws in info_keywords.values() for kw in kws):
-        return detailed_info.get(user_lang, detailed_info['ru'])
     
     return None
 
@@ -364,7 +365,9 @@ async def is_contextual_question(question, history):
         'що мені робити', 'что мне делать', 'що робити', 'что делать',
         'що мені', 'что мне', 'що далі', 'что дальше', 
         'що тепер', 'что теперь', 'що зараз', 'что сейчас',
-        'what should i do', 'what now', 'what next', 'what to do'
+        'what should i do', 'what now', 'what next', 'what to do',
+        'і що', 'и что', 'а що', 'а что', 'а тепер', 'а теперь',
+        'що мені робити зараз', 'что мне делать сейчас'
     ]
     
     if not any(variant in q_lower for variant in what_to_do_variants):
@@ -373,16 +376,15 @@ async def is_contextual_question(question, history):
     if not history or len(history) < 2:
         return None
     
-    last_bot_message = None
+    last_bot_messages = []
+    count = 0
     for msg in reversed(history):
-        if msg['role'] == 'bot':
-            last_bot_message = msg['content']
-            break
+        if msg['role'] == 'bot' and count < 3:
+            last_bot_messages.append(msg['content'].lower())
+            count += 1
     
-    if not last_bot_message:
+    if not last_bot_messages:
         return None
-    
-    last_bot_lower = last_bot_message.lower()
     
     instructions_keywords = [
         'інструкц', 'инструкц', 'instruction',
@@ -390,28 +392,32 @@ async def is_contextual_question(question, history):
         'надішли', 'пришли', 'send',
         'скрин', 'screenshot',
         'активуют', 'активують', 'activate',
-        'офіс', 'офис', 'office'
+        'офіс', 'офис', 'office',
+        'фото', 'photo',
+        'тестовий період', 'тестовый период',
+        'заробити', 'заработать'
     ]
     
-    if any(kw in last_bot_lower for kw in instructions_keywords):
-        if 'скрин' in last_bot_lower or 'screenshot' in last_bot_lower:
-            return {
-                'ru': 'Просто жди активации от офиса. Обычно это происходит на следующий будний день. Как только активируют — сможешь начать работать! 😊',
-                'uk': 'Просто чекай активації від офісу. Зазвичай це відбувається наступного робочого дня. Як тільки активують — зможеш почати працювати! 😊',
-                'en': 'Just wait for activation from the office. Usually it happens the next business day. Once activated — you can start working! 😊'
-            }
-        elif 'фото' in last_bot_lower or 'photo' in last_bot_lower:
-            return {
-                'ru': 'Нужно отправить мне 2-3 своих фото. После этого я отправлю их на рассмотрение офису 😊',
-                'uk': 'Потрібно надіслати мені 2-3 свої фото. Після цього я відправлю їх на розгляд офісу 😊',
-                'en': 'You need to send me 2-3 photos of yourself. After that I will send them for office review 😊'
-            }
-        else:
-            return {
-                'ru': 'Если я уже отправила инструкции — просто следуй им шаг за шагом. Если что-то непонятно — спрашивай конкретно! 😊',
-                'uk': 'Якщо я вже надіслала інструкції — просто дотримуйся їх крок за кроком. Якщо щось незрозуміло — питай конкретно! 😊',
-                'en': 'If I already sent instructions — just follow them step by step. If something is unclear — ask specifically! 😊'
-            }
+    for bot_msg in last_bot_messages:
+        if any(kw in bot_msg for kw in instructions_keywords):
+            if 'скрин' in bot_msg or 'screenshot' in bot_msg or 'офіс' in bot_msg or 'офис' in bot_msg:
+                return {
+                    'ru': 'Просто жди активации от офиса. Обычно это происходит на следующий будний день. Как только активируют — сможешь начать работать! 😊',
+                    'uk': 'Просто чекай активації від офісу. Зазвичай це відбувається наступного робочого дня. Як тільки активують — зможеш почати працювати! 😊',
+                    'en': 'Just wait for activation from the office. Usually it happens the next business day. Once activated — you can start working! 😊'
+                }
+            elif 'фото' in bot_msg or 'photo' in bot_msg:
+                return {
+                    'ru': 'Нужно отправить мне 2-3 своих фото. После этого я отправлю их на рассмотрение офису 😊',
+                    'uk': 'Потрібно надіслати мені 2-3 свої фото. Після цього я відправлю їх на розгляд офісу 😊',
+                    'en': 'You need to send me 2-3 photos of yourself. After that I will send them for office review 😊'
+                }
+            else:
+                return {
+                    'ru': 'Следуй инструкциям выше шаг за шагом. Если что-то непонятно на конкретном шаге — спрашивай! 😊',
+                    'uk': 'Дотримуйся інструкцій вище крок за кроком. Якщо щось незрозуміло на конкретному кроці — питай! 😊',
+                    'en': 'Follow the instructions above step by step. If something is unclear at a specific step — ask! 😊'
+                }
     
     return None
 
@@ -437,7 +443,7 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_gro
         logger.info(f"Contextual question detected for user {user_id}")
         return {
             'answer': answer,
-            'confidence': 90,
+            'confidence': 92,
             'escalate': False
         }
     
@@ -488,8 +494,6 @@ async def get_ai_response(user_id, question, is_in_groups=False):
     logger.info(f"Building context for user {user_id}")
     context_prompt = await build_context_prompt(user_id, question, is_in_groups)
     
-    system_prompt_with_lang = SYSTEM_PROMPT.replace('{USER_LANGUAGE}', user_lang)
-    
     try:
         logger.info(f"Calling AI for user {user_id}")
         
@@ -498,7 +502,7 @@ async def get_ai_response(user_id, question, is_in_groups=False):
                 client.chat.completions.create,
                 model="",
                 messages=[
-                    {"role": "system", "content": system_prompt_with_lang},
+                    {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": context_prompt}
                 ]
             ),
