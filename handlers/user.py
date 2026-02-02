@@ -15,7 +15,6 @@ from database import (
 )
 from utils.ai_handler import get_ai_response_with_retry
 from handlers.reviews import is_review_request, send_reviews
-from utils.language_detector import detect_language_request, detect_language
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -63,53 +62,6 @@ def get_already_registered_text(user_lang):
         'en': "You're already registered! If you have any work questions — just ask 😊"
     }
     return texts.get(user_lang, texts['ru'])
-
-async def auto_detect_and_update_language(user_id, text):
-    detected = detect_language(text)
-    user = await get_user(user_id)
-    current_lang = user['language'] or 'ru'
-    if detected != current_lang:
-        await update_user_language(user_id, detected)
-        logger.info(f"Auto-detected language '{detected}' for user {user_id} (was '{current_lang}')")
-    return detected
-
-async def handle_language_switch(message: Message, user_id: int):
-    text_lower = message.text.lower().strip()
-    
-    agency_keywords = ['which agency', 'what agency', 'agency name', 'яке агентство', 'какое агентство']
-    if any(kw in text_lower for kw in agency_keywords):
-        return False
-    
-    media_keywords = ['фото', 'відео', 'видео', 'photo', 'video', 'picture', 'image', 'можу', 'can i send', 'можна']
-    if any(kw in text_lower for kw in media_keywords):
-        return False
-    
-    requested_lang = detect_language_request(message.text)
-    
-    if requested_lang:
-        await update_user_language(user_id, requested_lang)
-        
-        confirm_texts = {
-            'ru': "✅ Переключаюсь на русский язык",
-            'uk': "✅ Переключаюсь на українську мову",
-            'en': "✅ Switching to English"
-        }
-        
-        welcome_msg = await get_setting(f'welcome_message_{requested_lang}')
-        if not welcome_msg:
-            welcome_msg = await get_setting('welcome_message_ru')
-        
-        confirm_text = confirm_texts.get(requested_lang, confirm_texts['ru'])
-        await message.answer(confirm_text)
-        await save_message(user_id, 'bot', confirm_text)
-        
-        await message.answer(welcome_msg)
-        await save_message(user_id, 'bot', welcome_msg)
-        
-        logger.info(f"User {user_id} switched language to {requested_lang}")
-        return True
-    
-    return False
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext, bot):
@@ -693,11 +645,6 @@ async def handle_question(message: Message, state: FSMContext, bot):
         return
     
     await unhide_user_on_activity(user_id)
-    
-    if await handle_language_switch(message, user_id):
-        return
-    
-    await auto_detect_and_update_language(user_id, message.text)
     
     question = message.text
     user = await get_user(user_id)
