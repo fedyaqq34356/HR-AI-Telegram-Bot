@@ -92,6 +92,10 @@ If you have any questions, please write to me. I am always available and happy t
 https://trainingforhost.wordpress.com"""
                 
                 await message.answer(training_text)
+            elif user_lang == 'uk':
+                keyboard = await groups_keyboard()
+                await message.answer("Чудово! Твоя заявка відправлена в офіс. Наступного робочого дня твій акаунт активують ✅", reply_markup=keyboard)
+                await message.answer(approval_msg)
             else:
                 keyboard = await groups_keyboard()
                 await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
@@ -128,6 +132,10 @@ If you have any questions, please write to me. I am always available and happy t
 https://trainingforhost.wordpress.com"""
                 
                 await message.answer(training_text)
+            elif user_lang == 'uk':
+                keyboard = await groups_keyboard()
+                await message.answer("Чудово! Твоя заявка відправлена в офіс. Наступного робочого дня твій акаунт активують ✅", reply_markup=keyboard)
+                await message.answer(approval_msg)
             else:
                 keyboard = await groups_keyboard()
                 await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
@@ -235,6 +243,10 @@ If you have any questions, please write to me. I am always available and happy t
 https://trainingforhost.wordpress.com"""
         
         await message.answer(training_text)
+    elif user_lang == 'uk':
+        keyboard = await groups_keyboard()
+        await message.answer("Чудово! Твоя заявка відправлена в офіс. Наступного робочого дня твій акаунт активують ✅", reply_markup=keyboard)
+        await message.answer(approval_msg)
     else:
         keyboard = await groups_keyboard()
         await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)

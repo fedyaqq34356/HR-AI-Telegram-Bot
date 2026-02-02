@@ -209,6 +209,20 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 async def check_faq_direct_match(question, user_lang='ru'):
     q_lower = question.lower().strip()
     
+    agency_keywords = [
+        'which agency', 'what agency', 'agency name',
+        'яке агентство', 'какое агентство', 'назва агентства', 'название агентства',
+        'tosagency', 'агентств'
+    ]
+    
+    if any(kw in q_lower for kw in agency_keywords):
+        responses = {
+            'ru': 'В разделе Агентство выбирай: Tosagency-Ukraine 😊',
+            'uk': 'У розділі Агентство обирай: Tosagency-Ukraine 😊',
+            'en': 'In the Agency section choose: Tosagency-Ukraine 😊'
+        }
+        return responses.get(user_lang, responses['ru'])
+    
     country = detect_country_in_text(q_lower)
     if country:
         country_display = country.capitalize()
@@ -431,10 +445,7 @@ If the format suits — waiting for photos 👋"""
     detailed_keywords = [
         'подробнее', 'больше информации', 'расскажи подробнее', 
         'детальніше', 'більше інформації', 'розкажи детальніше', 
-        'more details', 'more information', 'tell me more',
-        'про приложен', 'о приложени', 'about app',
-        'інформаці', 'информаци', 'information',
-        'можно информаци', 'можна інформаці', 'can i get info'
+        'more details', 'more information', 'tell me more'
     ]
     
     if any(kw in q_lower for kw in detailed_keywords):

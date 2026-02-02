@@ -86,7 +86,7 @@ Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 👉 Вкажи своє ім'я, вік (можна трохи менше реального) і країну.
 📢 Якщо не вмієш читати англійською — ось як вимовляти:
-Хеллоу. Май нейм Аня. Ай ем ейтін йерс олд. Ай лів ін Джерм��ні. Ай вонт ту джойн.
+Хеллоу. Май нейм Аня. Ай ем ейтін йерс олд. Ай лів ін Джерманi. Ай вонт ту джойн.
 5. Після запису — надішли скрін, де видно твій ID у застосунку і агентство.
 6. Я відправляю заявку в офіс. Наступного робочого дня твій акаунт активують.""",
         'en': """📰 Registration
@@ -103,6 +103,8 @@ Enter:
 🔹 Example for video:
 Hello, my name is Anya. I am 18 years old. I live in Germany. I want to join.
 👉 State your name, age (can be slightly less than real) and country.
+📢 Pronunciation guide:
+Hello. My name Anya. I am eighteen years old. I live in Germany. I want to join.
 5. After recording — send a screenshot showing your ID in the application and agency.
 6. I send the application to the office. The next business day your account will be activated."""
     }
