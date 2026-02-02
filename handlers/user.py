@@ -74,6 +74,12 @@ async def auto_detect_and_update_language(user_id, text):
     return detected
 
 async def handle_language_switch(message: Message, user_id: int):
+    text_lower = message.text.lower().strip()
+    
+    agency_keywords = ['which agency', 'what agency', 'agency name', 'яке агентство', 'какое агентство']
+    if any(kw in text_lower for kw in agency_keywords):
+        return False
+    
     requested_lang = detect_language_request(message.text)
     
     if requested_lang:
@@ -188,7 +194,7 @@ async def handle_language_choice(message: Message, state: FSMContext, bot):
         chosen_lang = 'en'
     else:
         repeat_text = """Выберите язык - напишите ru
-Оберіть мову - напишіть uk
+Оберіть мову - напішіть uk
 Choose language - type en"""
         await message.answer(repeat_text)
         return
