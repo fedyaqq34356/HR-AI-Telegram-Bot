@@ -370,16 +370,14 @@ async def handle_work_hours(message: Message, state: FSMContext):
     user_id = message.from_user.id
     await unhide_user_on_activity(user_id)
     
-    if await handle_language_switch(message, user_id):
-        return
-    
-    user_lang = await auto_detect_and_update_language(user_id, message.text)
-    
     await save_message(user_id, 'user', message.text)
     
     await state.update_data(work_hours=message.text)
     await update_user_status(user_id, 'asking_experience')
     await state.set_state(UserStates.asking_experience)
+    
+    user = await get_user(user_id)
+    user_lang = user['language'] or 'ru'
     
     question_texts = {
         'ru': "2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)",
@@ -403,11 +401,6 @@ async def handle_experience(message: Message, state: FSMContext, bot):
     from database import create_application, get_photos
     
     await unhide_user_on_activity(user_id)
-    
-    if await handle_language_switch(message, user_id):
-        return
-    
-    await auto_detect_and_update_language(user_id, message.text)
     
     await save_message(user_id, 'user', message.text)
     
