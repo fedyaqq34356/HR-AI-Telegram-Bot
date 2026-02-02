@@ -466,11 +466,6 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
     
     await unhide_user_on_activity(user_id)
     
-    if await handle_language_switch(message, user_id):
-        return
-    
-    await auto_detect_and_update_language(user_id, message.text)
-    
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
@@ -551,11 +546,6 @@ async def handle_waiting_admin(message: Message, bot):
     
     await unhide_user_on_activity(user_id)
     
-    if await handle_language_switch(message, user_id):
-        return
-    
-    await auto_detect_and_update_language(user_id, message.text)
-    
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
@@ -598,11 +588,6 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
         return
     
     await unhide_user_on_activity(user_id)
-    
-    if await handle_language_switch(message, user_id):
-        return
-    
-    await auto_detect_and_update_language(user_id, message.text)
     
     question = message.text
     user = await get_user(user_id)
