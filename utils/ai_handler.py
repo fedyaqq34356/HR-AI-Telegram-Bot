@@ -162,7 +162,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     user_lang = user['language'] if user and user['language'] else 'ru'
     lang_instruction = {
         'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.",
-        'uk': "ВІДПОВІДАЙ ТІЛЬКИ УКРАЇНІЄЮ МОВОЮ.",
+        'uk': "ВІДПОВІДАЙ ТІЛЬКИ УКРАЇНСЬКОЮ МОВОЮ.",
         'en': "RESPOND ONLY IN ENGLISH."
     }
     
@@ -202,6 +202,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 11. Ответ должен быть в стиле менеджера Valencia
 12. ЛЮБАЯ СТРАНА ПОДХОДИТ — если спрашивают про любую страну, отвечай что она подходит
 13. ВСЕГДА отвечай на том же языке, что и пользователь ({user_lang})
+14. ВАЖНО: Ответ должен быть КРАТКИМ (максимум 300 слов). Не пиши длинные тексты!
 """
     
     return context_prompt
@@ -210,12 +211,25 @@ async def check_faq_direct_match(question, user_lang='ru'):
     q_lower = question.lower().strip()
     
     agency_keywords = [
-        'which agency', 'what agency', 'agency name',
+        'which agency', 'what agency', 'agency name', 'which one',
         'яке агентство', 'какое агентство', 'назва агентства', 'название агентства',
-        'tosagency', 'агентств'
+        'яке обрати', 'какое выбрать', 'which to choose', 'which should i choose',
+        'tosagency', 'агентств', 'agency', 'агентство', 'агенство',
+        'яке', 'какое', 'which', 'what is agency', 'what agency name'
     ]
     
-    if any(kw in q_lower for kw in agency_keywords):
+    is_agency_question = False
+    for kw in agency_keywords:
+        if kw in q_lower:
+            is_agency_question = True
+            break
+    
+    if not is_agency_question:
+        agency_words_count = sum(1 for word in ['agency', 'агентств', 'агентство', 'агенство', 'яке', 'какое', 'which'] if word in q_lower)
+        if agency_words_count > 0 and len(q_lower.split()) <= 4:
+            is_agency_question = True
+    
+    if is_agency_question:
         responses = {
             'ru': 'В разделе Агентство выбирай: Tosagency-Ukraine 😊',
             'uk': 'У розділі Агентство обирай: Tosagency-Ukraine 😊',
@@ -677,6 +691,10 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             
             confidence = 90 if any(greeting in q_lower for greeting in simple_responses) else 70
             
+            if len(content) > 4000:
+                logger.warning(f"AI response too long for user {user_id}, truncating")
+                content = content[:3800] + "\n\n(продолжение в следующем сообщении...)"
+            
             return {
                 'answer': content,
                 'confidence': confidence,
@@ -684,8 +702,13 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             }
         
         if not isinstance(result, dict):
+            answer_text = str(result)
+            if len(answer_text) > 4000:
+                logger.warning(f"AI response too long for user {user_id}, truncating")
+                answer_text = answer_text[:3800] + "\n\n(продолжение в следующем сообщении...)"
+            
             return {
-                'answer': str(result),
+                'answer': answer_text,
                 'confidence': 70,
                 'escalate': False
             }
@@ -704,6 +727,10 @@ async def get_ai_response(user_id, question, is_in_groups=False):
                 'confidence': 0,
                 'escalate': True
             }
+        
+        if len(str(result.get('answer', ''))) > 4000:
+            logger.warning(f"AI response too long for user {user_id}, truncating")
+            result['answer'] = str(result['answer'])[:3800] + "\n\n(продолжение в следующем сообщении...)"
         
         logger.info(f"AI response for {user_id}: conf={result['confidence']}, esc={result['escalate']}")
         
