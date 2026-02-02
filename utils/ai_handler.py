@@ -223,6 +223,19 @@ async def check_faq_direct_match(question, user_lang='ru'):
         }
         return responses.get(user_lang, responses['ru'])
     
+    video_photo_keywords = [
+        'can i send video', 'video instead', 'відео замість', 'видео вместо',
+        'можу відео', 'могу видео', 'відправити відео', 'отправить видео'
+    ]
+    
+    if any(kw in q_lower for kw in video_photo_keywords):
+        responses = {
+            'ru': 'Нужны именно фото, не видео 📸 Пришли 2-3 фото хорошего качества, чтобы было чётко видно лицо 😊',
+            'uk': 'Потрібні саме фото, не відео 📸 Надішли 2-3 фото хорошої якості, щоб було чітко видно обличчя 😊',
+            'en': 'We need photos, not videos 📸 Send 2-3 good quality photos with your face clearly visible 😊'
+        }
+        return responses.get(user_lang, responses['ru'])
+    
     country = detect_country_in_text(q_lower)
     if country:
         country_display = country.capitalize()

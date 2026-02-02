@@ -80,6 +80,10 @@ async def handle_language_switch(message: Message, user_id: int):
     if any(kw in text_lower for kw in agency_keywords):
         return False
     
+    media_keywords = ['фото', 'відео', 'видео', 'photo', 'video', 'picture', 'image', 'можу', 'can i send', 'можна']
+    if any(kw in text_lower for kw in media_keywords):
+        return False
+    
     requested_lang = detect_language_request(message.text)
     
     if requested_lang:
@@ -369,7 +373,7 @@ async def handle_work_hours(message: Message, state: FSMContext):
     if await handle_language_switch(message, user_id):
         return
     
-    await auto_detect_and_update_language(user_id, message.text)
+    user_lang = await auto_detect_and_update_language(user_id, message.text)
     
     await save_message(user_id, 'user', message.text)
     
@@ -377,8 +381,6 @@ async def handle_work_hours(message: Message, state: FSMContext):
     await update_user_status(user_id, 'asking_experience')
     await state.set_state(UserStates.asking_experience)
     
-    user = await get_user(user_id)
-    user_lang = user['language'] or 'ru'
     question_texts = {
         'ru': "2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)",
         'uk': "2️⃣ Чи був у тебе досвід роботи в подібних застосунках або платформах?\n(Якщо так — опиши коротко. Якщо ні — так і напиши)",

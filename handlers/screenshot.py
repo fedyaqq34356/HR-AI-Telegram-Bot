@@ -75,8 +75,6 @@ async def handle_screenshot(message: Message, bot, state: FSMContext):
             
             user_lang = user_data['language'] or 'ru'
             
-            approval_msg = await get_setting('approval_message')
-            
             if user_lang == 'en':
                 await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
                 
@@ -95,11 +93,31 @@ https://trainingforhost.wordpress.com"""
             elif user_lang == 'uk':
                 keyboard = await groups_keyboard()
                 await message.answer("Чудово! Твоя заявка відправлена в офіс. Наступного робочого дня твій акаунт активують ✅", reply_markup=keyboard)
-                await message.answer(approval_msg)
+                
+                approval_msg_uk = """Підключення до робочих груп
+
+Після реєстрації:
+ • Приєднуйся до двох груп.
+ • У групі «Навчання» є закріплене повідомлення з повною інформацією.
+ • Обов'язково ознайомся з ним!
+
+Якщо виникнуть питання — пиши, я завжди на зв'язку і допоможу 😊"""
+                
+                await message.answer(approval_msg_uk)
             else:
                 keyboard = await groups_keyboard()
                 await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
-                await message.answer(approval_msg)
+                
+                approval_msg_ru = """Подключение к рабочим группам
+
+После регистрации:
+ • Присоединяйся к двум группам.
+ • В группе «Обучение» есть закреплённое сообщение с полной информацией.
+ • Обязательно ознакомься с ним!
+
+Если возникнут вопросы — пиши, я всегда на связи и помогу 😊"""
+                
+                await message.answer(approval_msg_ru)
             
             logger.info(f"Screenshot processed successfully for user {user_id}, ID: {extracted_id}")
             
@@ -115,8 +133,6 @@ https://trainingforhost.wordpress.com"""
             
             user_lang = user_data['language'] or 'ru'
             
-            approval_msg = await get_setting('approval_message')
-            
             if user_lang == 'en':
                 await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
                 
@@ -135,11 +151,31 @@ https://trainingforhost.wordpress.com"""
             elif user_lang == 'uk':
                 keyboard = await groups_keyboard()
                 await message.answer("Чудово! Твоя заявка відправлена в офіс. Наступного робочого дня твій акаунт активують ✅", reply_markup=keyboard)
-                await message.answer(approval_msg)
+                
+                approval_msg_uk = """Підключення до робочих груп
+
+Після реєстрації:
+ • Приєднуйся до двох груп.
+ • У групі «Навчання» є закріплене повідомлення з повною інформацією.
+ • Обов'язково ознайомся з ним!
+
+Якщо виникнуть питання — пиши, я завжди на зв'язку і допоможу 😊"""
+                
+                await message.answer(approval_msg_uk)
             else:
                 keyboard = await groups_keyboard()
                 await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
-                await message.answer(approval_msg)
+                
+                approval_msg_ru = """Подключение к рабочим группам
+
+После регистрации:
+ • Присоединяйся к двум группам.
+ • В группе «Обучение» есть закреплённое сообщение с полной информацией.
+ • Обязательно ознакомься с ним!
+
+Если возникнут вопросы — пиши, я всегда на связи и помогу 😊"""
+                
+                await message.answer(approval_msg_ru)
             
             logger.info(f"Screenshot with caption processed for user {user_id}: {caption_text}")
             
@@ -226,8 +262,6 @@ async def handle_manual_id(message: Message, bot, state: FSMContext):
     await update_user_status(user_id, 'registered')
     await state.set_state(UserStates.registered)
     
-    approval_msg = await get_setting('approval_message')
-    
     if user_lang == 'en':
         await message.answer("Great! Your application has been sent to the office. Your account will be activated on the next business day ✅")
         
@@ -246,10 +280,30 @@ https://trainingforhost.wordpress.com"""
     elif user_lang == 'uk':
         keyboard = await groups_keyboard()
         await message.answer("Чудово! Твоя заявка відправлена в офіс. Наступного робочого дня твій акаунт активують ✅", reply_markup=keyboard)
-        await message.answer(approval_msg)
+        
+        approval_msg_uk = """Підключення до робочих груп
+
+Після реєстрації:
+ • Приєднуйся до двох груп.
+ • У групі «Навчання» є закріплене повідомлення з повною інформацією.
+ • Обов'язково ознайомся з ним!
+
+Якщо виникнуть питання — пиши, я завжди на зв'язку і допоможу 😊"""
+        
+        await message.answer(approval_msg_uk)
     else:
         keyboard = await groups_keyboard()
         await message.answer("Отлично! Твоя заявка отправлена в офис. На следующий будний день твой аккаунт активируют ✅", reply_markup=keyboard)
-        await message.answer(approval_msg)
+        
+        approval_msg_ru = """Подключение к рабочим группам
+
+После регистрации:
+ • Присоединяйся к двум группам.
+ • В группе «Обучение» есть закреплённое сообщение с полной информацией.
+ • Обязательно ознакомься с ним!
+
+Если возникнут вопросы — пиши, я всегда на связи и помогу 😊"""
+        
+        await message.answer(approval_msg_ru)
     
     logger.info(f"Manual ID processed successfully for user {user_id}: {manual_id}")
