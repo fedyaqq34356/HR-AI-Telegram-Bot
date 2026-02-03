@@ -109,11 +109,13 @@ async def check_forbidden_topics(message):
 
 async def build_context_prompt(user_id, question, is_in_groups=False):
     from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos
+    from utils.language_detector import detect_language
     
     user = await get_user(user_id)
     history = await get_messages(user_id, limit=15)
     
-    user_lang = user['language'] if user and user['language'] else 'ru'
+    question_lang = detect_language(question)
+    user_lang = user['language'] if user and user['language'] else question_lang
     
     status = user['status']
     if status in ['new', 'chatting', 'waiting_photos', 'asking_work_hours', 'asking_experience']:
@@ -125,11 +127,16 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     else:
         category = 'new'
     
-    faq = await get_faq(category=category)
+    faq_ru = await get_faq(category=category)
+    faq_all = await get_faq()
     learning = await get_ai_learning()
     
     history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
-    faq_text = "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq[:30]])
+    
+    faq_text = "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq_ru[:30]])
+    faq_text += "\n\n=== ДОПОЛНИТЕЛЬНЫЕ ВОПРОСЫ (ВСЕ ЯЗЫКИ) ===\n"
+    faq_text += "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq_all[:50]])
+    
     learning_text = "\n".join([f"Q: {l['question']}\nA: {l['answer']} (confidence: {l['confidence']})" for l in learning[:10]])
     
     group_status = "ЕСТЬ В ГРУППАХ (можно отвечать на рабочие вопросы)" if is_in_groups else "НЕТ В ГРУППАХ (только регистрация)"
@@ -138,82 +145,115 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
     
     training_materials = ""
-    texts = await get_all_analysis_texts(lang=user_lang)
-    audios = await get_all_analysis_audios(lang=user_lang)
-    videos = await get_all_analysis_videos(lang=user_lang)
+    texts_all = await get_all_analysis_texts()
+    audios_all = await get_all_analysis_audios()
+    videos_all = await get_all_analysis_videos()
     
-    if texts or audios or videos:
-        training_materials = f"\n\n=== ОБУЧАЮЩИЕ МАТЕРИАЛЫ (язык: {user_lang}) ===\n"
-        training_materials += "КРИТИЧЕСКИ ВАЖНО: Эти материалы содержат ПОЛНУЮ информацию о работе в Halo!\n"
-        training_materials += "Если вопрос касается работы и ответ есть в материалах - отвечай САМОСТОЯТЕЛЬНО с confidence 90-95!\n"
-        training_materials += "НЕ эскалируй вопросы, на которые есть ответ в обучающих материалах!\n\n"
+    if texts_all or audios_all or videos_all:
+        training_materials = f"\n\n=== ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ВСЕ ЯЗЫКИ) ===\n"
         
-        if texts:
+        if texts_all:
             training_materials += "=== ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
-            for i, text in enumerate(texts[:20], 1):
-                content = text.get('text', '')
-                training_materials += f"\n--- Документ {i} ---\n{content}\n"
+            for i, text in enumerate(texts_all[:20], 1):
+                content_ru = text.get('text_ru') or text.get('text', '')
+                content_uk = text.get('text_uk', '')
+                content_en = text.get('text_en', '')
+                
+                training_materials += f"\n--- Документ {i} ---\n"
+                if content_ru:
+                    training_materials += f"[RU]: {content_ru}\n"
+                if content_uk:
+                    training_materials += f"[UK]: {content_uk}\n"
+                if content_en:
+                    training_materials += f"[EN]: {content_en}\n"
         
-        if audios:
+        if audios_all:
             training_materials += "\n=== АУДИО МАТЕРИАЛЫ (расшифровки) ===\n"
-            for i, audio in enumerate(audios[:10], 1):
-                content = audio.get('transcription', '')
-                training_materials += f"\n--- Аудио {i} ---\n{content}\n"
+            for i, audio in enumerate(audios_all[:10], 1):
+                content_ru = audio.get('transcription_ru') or audio.get('transcription', '')
+                content_uk = audio.get('transcription_uk', '')
+                content_en = audio.get('transcription_en', '')
+                
+                training_materials += f"\n--- Аудио {i} ---\n"
+                if content_ru:
+                    training_materials += f"[RU]: {content_ru}\n"
+                if content_uk:
+                    training_materials += f"[UK]: {content_uk}\n"
+                if content_en:
+                    training_materials += f"[EN]: {content_en}\n"
         
-        if videos:
+        if videos_all:
             training_materials += "\n=== ВИДЕО МАТЕРИАЛЫ (расшифровки) ===\n"
-            for i, video in enumerate(videos[:10], 1):
-                content = video.get('transcription', '')
-                training_materials += f"\n--- Видео {i} ---\n{content}\n"
+            for i, video in enumerate(videos_all[:10], 1):
+                content_ru = video.get('transcription_ru') or video.get('transcription', '')
+                content_uk = video.get('transcription_uk', '')
+                content_en = video.get('transcription_en', '')
+                
+                training_materials += f"\n--- Видео {i} ---\n"
+                if content_ru:
+                    training_materials += f"[RU]: {content_ru}\n"
+                if content_uk:
+                    training_materials += f"[UK]: {content_uk}\n"
+                if content_en:
+                    training_materials += f"[EN]: {content_en}\n"
     
     lang_instruction = {
-        'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.",
-        'uk': "ВІДПОВІДАЙ ТІЛЬКИ УКРАЇНСЬКОЮ МОВОЮ.",
-        'en': "RESPOND ONLY IN ENGLISH."
+        'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ",
+        'uk': "ВІДПОВІДАЙ ТІЛЬКИ УКРАЇНСЬКОЮ МОВОЮ",
+        'en': "RESPOND ONLY IN ENGLISH"
     }
     
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
 СТАТУС УЧАСТИЯ: {group_status}
-ЯЗЫК ПОЛЬЗОВАТЕЛЯ: {user_lang}
-{lang_instruction.get(user_lang, lang_instruction['ru'])}
+ЯЗЫК ВОПРОСА: {question_lang}
+{lang_instruction.get(question_lang, lang_instruction['ru'])}
 
-ПОСЛЕДНИЕ СООБЩЕНИЯ (ВАЖНО ДЛЯ КОНТЕКСТА):
+ПРИОРИТЕТ ИСТОЧНИКОВ ОТВЕТА (СТРОГО СЛЕДУЙ В ЭТОМ ПОРЯДКЕ):
+
+ПРИОРИТЕТ 1 - ПОСЛЕДНИЕ 5 СООБЩЕНИЙ:
 {recent_context}
+Если ответ есть в последних 5 сообщениях - отвечай на их основе с confidence 90-95
 
-ПОЛНАЯ ИСТОРИЯ ДИАЛОГА:
+ПРИОРИТЕТ 2 - БАЗА ЗНАНИЙ (FAQ) И ПРАВИЛА:
+{faq_text}
+Если ответ есть в FAQ - отвечай на его основе с confidence 85-90
+
+ПРИОРИТЕТ 3 - ОБУЧАЮЩИЕ МАТЕРИАЛЫ:
+{training_materials}
+Если ответ есть в обучающих материалах - отвечай на их основе с confidence 85-90
+ИСПОЛЬЗУЙ версию материала на языке вопроса ({question_lang})
+
+ПРИОРИТЕТ 4 - ЭСКАЛАЦИЯ:
+Если ответа НЕТ ни в одном из источников выше - ЭСКАЛИРУЙ (escalate: true, confidence < 70)
+
+ПОЛНАЯ ИСТОРИЯ ДИАЛОГА (для контекста):
 {history_text}
 
-БАЗА ЗНАНИЙ (FAQ):
-{faq_text}
-
-ОБУЧЕННЫЕ ОТВЕТЫ:
+ОБУЧЕННЫЕ ОТВЕТЫ (для справки):
 {learning_text}
-{training_materials}
 
 ТЕКУЩИЙ ВОПРОС:
 {question}
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
-1. ВНИМАТЕЛЬНО прочитай обучающие материалы выше
-2. Если вопрос про работу в Halo и ответ есть в обучающих материалах - отвечай САМОСТОЯТЕЛЬНО с confidence 90-95
-3. НЕ эскалируй вопросы, на которые есть ответ в обучающих материалах
-4. Используй информацию из обучающих материалов напрямую - они уже переведены на {user_lang}
-5. Если вопрос связан с предыдущим сообщением - отвечай сам с высокой confidence (85+)
-6. Проверь FAQ и обученные ответы
-7. Если это простая эмоция (супер, класс, ок, добре) - отвечай поддерживающе с confidence 95+, НЕ ЭСКАЛИРУЙ
-8. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 90+
-9. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа И его нет в обучающих материалах
-10. Ответ должен быть в стиле менеджера Valencia
-11. ЛЮБАЯ СТРАНА ПОДХОДИТ
-12. ВСЕГДА отвечай на языке {user_lang}
-13. Ответ должен быть КРАТКИМ (максимум 200 слов)
-14. НЕ ИСПОЛЬЗУЙ MARKDOWN - никаких звездочек, подчеркиваний, жирного шрифта
+1. СТРОГО следуй приоритету источников (5 сообщений → FAQ → Обучающие → Эскалация)
+2. Отвечай на ЯЗЫКЕ ВОПРОСА ({question_lang}), а НЕ на языке профиля пользователя
+3. Используй материалы на языке вопроса - выбирай [RU], [UK] или [EN] версию
+4. Простые эмоции (ок, супер, класс, добре, ok, good) - отвечай с confidence 95+
+5. Общие вопросы (привет, как дела) можешь отвечать на любом языке
+6. ЛЮБАЯ СТРАНА ПОДХОДИТ для работы
+7. Ответ КРАТКИЙ (максимум 200 слов)
+8. НЕ ИСПОЛЬЗУЙ MARKDOWN (без *, _, **)
+9. Стиль менеджера Valencia (дружелюбный, с эмодзи)
 """
     
     return context_prompt
 
 async def check_faq_direct_match(question, user_lang='ru'):
+    from utils.language_detector import detect_language
+    
+    question_lang = detect_language(question)
     q_lower = question.lower().strip()
     
     agency_keywords = [
@@ -241,7 +281,7 @@ async def check_faq_direct_match(question, user_lang='ru'):
             'uk': 'У розділі Агентство обирай: Tosagency-Ukraine 😊',
             'en': 'In the Agency section choose: Tosagency-Ukraine 😊'
         }
-        return responses.get(user_lang, responses['ru'])
+        return responses.get(question_lang, responses['ru'])
     
     video_photo_keywords = [
         'can i send video', 'video instead', 'відео замість', 'видео вместо',
@@ -254,7 +294,7 @@ async def check_faq_direct_match(question, user_lang='ru'):
             'uk': 'Потрібні саме фото, не відео 📸 Надішли 2-3 фото хорошої якості, щоб було чітко видно обличчя 😊',
             'en': 'We need photos, not videos 📸 Send 2-3 good quality photos with your face clearly visible 😊'
         }
-        return responses.get(user_lang, responses['ru'])
+        return responses.get(question_lang, responses['ru'])
     
     country = detect_country_in_text(q_lower)
     if country:
@@ -264,7 +304,7 @@ async def check_faq_direct_match(question, user_lang='ru'):
             'uk': f"У нас працюють дівчата з усіх країн! {country_display} підходить ✅ При реєстрації можешь вибрати будь-яку країну 😊",
             'en': f"We have girls working from all countries! {country_display} works perfectly ✅ During registration you can choose any country 😊"
         }
-        return responses.get(user_lang, responses['ru'])
+        return responses.get(question_lang, responses['ru'])
     
     detailed_info = {
         'ru': """Приветик 😊
@@ -452,7 +492,7 @@ If the format suits — waiting for photos 👋"""
     
     for reaction, responses in simple_reactions.items():
         if q_lower == reaction:
-            lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(user_lang, 0)
+            lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(question_lang, 0)
             return responses[lang_index]
     
     faq_direct = {
@@ -472,7 +512,7 @@ If the format suits — waiting for photos 👋"""
     
     for key, answers in faq_direct.items():
         if key in q_lower or q_lower in key:
-            lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(user_lang, 0)
+            lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(question_lang, 0)
             return answers[lang_index]
     
     detailed_keywords = [
@@ -482,7 +522,7 @@ If the format suits — waiting for photos 👋"""
     ]
     
     if any(kw in q_lower for kw in detailed_keywords):
-        return detailed_info.get(user_lang, detailed_info['ru'])
+        return detailed_info.get(question_lang, detailed_info['ru'])
     
     waiting_keywords = [
         'просто ждать', 'мне просто ждать', 'мне ждать', 'просто жду', 'и все', 'теперь жду', 
@@ -496,11 +536,14 @@ If the format suits — waiting for photos 👋"""
             'uk': 'Так, просто чекай 😊 Активація зазвичай відбувається наступного робочого дня. Як тільки активують — зможеш почати заробляти! 💪',
             'en': 'Yes, just wait 😊 Activation usually happens the next business day. Once activated — you can start earning! 💪'
         }
-        return responses.get(user_lang, responses['ru'])
+        return responses.get(question_lang, responses['ru'])
     
     return None
 
 async def is_contextual_question(question, history):
+    from utils.language_detector import detect_language
+    
+    question_lang = detect_language(question)
     q_lower = question.lower().strip()
     
     what_to_do_variants = [
@@ -578,12 +621,14 @@ async def is_contextual_question(question, history):
     return None
 
 async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_groups=False):
+    from utils.language_detector import detect_language
+    
     logger.info(f"Starting AI request for user {user_id}")
     
     user = await get_user(user_id)
-    user_lang = user['language'] if user and user['language'] else 'ru'
+    question_lang = detect_language(question)
     
-    direct_answer = await check_faq_direct_match(question, user_lang)
+    direct_answer = await check_faq_direct_match(question, question_lang)
     if direct_answer:
         logger.info(f"Direct FAQ match for user {user_id}")
         return {
@@ -595,7 +640,7 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_gro
     history = await get_messages(user_id, limit=10)
     contextual_answer = await is_contextual_question(question, history)
     if contextual_answer:
-        answer = contextual_answer.get(user_lang, contextual_answer.get('ru', ''))
+        answer = contextual_answer.get(question_lang, contextual_answer.get('ru', ''))
         logger.info(f"Contextual question detected for user {user_id}")
         return {
             'answer': answer,
@@ -636,13 +681,15 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_gro
     }
 
 async def get_ai_response(user_id, question, is_in_groups=False):
+    from utils.language_detector import detect_language
+    
     user = await get_user(user_id)
-    user_lang = user['language'] if user and user['language'] else 'ru'
+    question_lang = detect_language(question)
     
     if await check_forbidden_topics(question):
         logger.info(f"Forbidden topic for user {user_id}")
         return {
-            'answer': UNIVERSAL_RESPONSE.get(user_lang, UNIVERSAL_RESPONSE['ru']),
+            'answer': UNIVERSAL_RESPONSE.get(question_lang, UNIVERSAL_RESPONSE['ru']),
             'confidence': 100,
             'escalate': False
         }
