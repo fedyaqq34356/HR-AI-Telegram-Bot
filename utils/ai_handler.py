@@ -113,6 +113,8 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     user = await get_user(user_id)
     history = await get_messages(user_id, limit=15)
     
+    user_lang = user['language'] if user and user['language'] else 'ru'
+    
     status = user['status']
     if status in ['new', 'chatting', 'waiting_photos', 'asking_work_hours', 'asking_experience']:
         category = 'new'
@@ -137,29 +139,29 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     
     training_materials = ""
     if is_in_groups:
-        texts = await get_all_analysis_texts()
-        audios = await get_all_analysis_audios()
-        videos = await get_all_analysis_videos()
+        texts = await get_all_analysis_texts(lang=user_lang)
+        audios = await get_all_analysis_audios(lang=user_lang)
+        videos = await get_all_analysis_videos(lang=user_lang)
         
         if texts or audios or videos:
-            training_materials = "\n\nОБУЧАЮЩИЕ МАТЕРИАЛЫ:\n"
+            training_materials = f"\n\nОБУЧАЮЩИЕ МАТЕРИАЛЫ (на языке {user_lang}):\n"
+            training_materials += "ВНИМАНИЕ: Эти материалы содержат полную информацию о работе. Используй их для ответов с высоким confidence (85-95)!\n\n"
             
             if texts:
                 training_materials += "\nТекстовые материалы:\n"
                 for text in texts[:20]:
-                    training_materials += f"{text['text'][:500]}\n...\n"
+                    training_materials += f"{text['text'][:800]}\n...\n"
             
             if audios:
                 training_materials += "\nАудио материалы (расшифровки):\n"
                 for audio in audios[:10]:
-                    training_materials += f"{audio['transcription'][:500]}\n...\n"
+                    training_materials += f"{audio['transcription'][:800]}\n...\n"
             
             if videos:
                 training_materials += "\nВидео материалы (расшифровки):\n"
                 for video in videos[:10]:
-                    training_materials += f"{video['transcription'][:500]}\n...\n"
+                    training_materials += f"{video['transcription'][:800]}\n...\n"
     
-    user_lang = user['language'] if user and user['language'] else 'ru'
     lang_instruction = {
         'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.",
         'uk': "ВІДПОВІДАЙ ТІЛЬКИ УКРАЇНСЬКОЮ МОВОЮ.",
@@ -193,11 +195,11 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 2. Если вопрос связан с предыдущим сообщением - отвечай сам с высокой confidence (85+)
 3. Проверь, есть ли точный ответ в FAQ
 4. Проверь обученные ответы
-5. Если девушка ЕСТЬ в группе - используй обучающие материалы для ответа
-6. Если это простая эмоция (супер, класс, ок, добре) - отвечай поддерживающе с confidence 95+, НЕ ЭСКАЛИРУЙ
-7. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 90+
-8. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
-9. Если девушка ЕСТЬ в группах - можешь отвечать на любые рабочие вопросы, используя обучающие материалы
+5. ВАЖНО: Если девушка ЕСТЬ в группе и информация есть в обучающих материалах - отвечай сам с confidence 85-95! Не эскалируй!
+6. Обучающие материалы переведены на нужный язык - используй их напрямую!
+7. Если это простая эмоция (супер, класс, ок, добре) - отвечай поддерживающе с confidence 95+, НЕ ЭСКАЛИРУЙ
+8. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 90+
+9. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
 10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
 11. Ответ должен быть в стиле менеджера Valencia
 12. ЛЮБАЯ СТРАНА ПОДХОДИТ — если спрашивают про любую страну, отвечай что она подходит

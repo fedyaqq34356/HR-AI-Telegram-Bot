@@ -70,6 +70,7 @@ async def cmd_start_analysis(message: Message, bot):
     from database.analysis import save_analysis_text, save_analysis_audio, save_analysis_video, clear_analysis_data
     from database.group_messages import get_unprocessed_messages, mark_message_processed
     from utils.audio_transcription import transcribe_audio
+    from utils.translator import translate_to_all_languages
     
     await clear_analysis_data()
     
@@ -98,7 +99,17 @@ async def cmd_start_analysis(message: Message, bot):
                     f.write(f"From: {msg['username']}\n\n")
                     f.write(msg['content'])
                 
-                await save_analysis_text(msg['message_id'], msg['content'], filename)
+                logger.info(f"Translating text message {msg['message_id']}...")
+                translations = await translate_to_all_languages(msg['content'])
+                
+                await save_analysis_text(
+                    msg['message_id'], 
+                    msg['content'], 
+                    filename,
+                    text_ru=translations['ru'],
+                    text_uk=translations['uk'],
+                    text_en=translations['en']
+                )
                 await mark_message_processed(msg['message_id'])
                 
                 if text_count % 10 == 0:
@@ -133,7 +144,17 @@ async def cmd_start_analysis(message: Message, bot):
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
                     
-                    await save_analysis_audio(msg['message_id'], transcription, filename)
+                    logger.info(f"Translating audio transcription {msg['message_id']}...")
+                    translations = await translate_to_all_languages(transcription)
+                    
+                    await save_analysis_audio(
+                        msg['message_id'], 
+                        transcription, 
+                        filename,
+                        transcription_ru=translations['ru'],
+                        transcription_uk=translations['uk'],
+                        transcription_en=translations['en']
+                    )
                     await mark_message_processed(msg['message_id'])
                     
                     if audio_count % 5 == 0:
@@ -175,7 +196,17 @@ async def cmd_start_analysis(message: Message, bot):
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
                     
-                    await save_analysis_video(msg['message_id'], transcription, filename)
+                    logger.info(f"Translating video transcription {msg['message_id']}...")
+                    translations = await translate_to_all_languages(transcription)
+                    
+                    await save_analysis_video(
+                        msg['message_id'], 
+                        transcription, 
+                        filename,
+                        transcription_ru=translations['ru'],
+                        transcription_uk=translations['uk'],
+                        transcription_en=translations['en']
+                    )
                     await mark_message_processed(msg['message_id'])
                     
                     if video_count % 5 == 0:
@@ -188,7 +219,7 @@ async def cmd_start_analysis(message: Message, bot):
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
         
-        await message.answer(f"✅ Видео обработаны: {video_count}\n\n🎉 Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}")
+        await message.answer(f"✅ Видео обработаны: {video_count}\n\n🎉 Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}\n\nВсе материалы переведены на русский, украинский и английский языки ✅")
         
     except Exception as e:
         logger.error(f"Error during analysis: {e}", exc_info=True)

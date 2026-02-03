@@ -139,30 +139,81 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER,
                 text TEXT,
+                text_ru TEXT,
+                text_uk TEXT,
+                text_en TEXT,
                 filename TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        cursor = await db.execute("PRAGMA table_info(analysis_text)")
+        columns = await cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        if 'text_ru' not in column_names:
+            await db.execute('ALTER TABLE analysis_text ADD COLUMN text_ru TEXT')
+            logger.info("Added text_ru column to analysis_text")
+        if 'text_uk' not in column_names:
+            await db.execute('ALTER TABLE analysis_text ADD COLUMN text_uk TEXT')
+            logger.info("Added text_uk column to analysis_text")
+        if 'text_en' not in column_names:
+            await db.execute('ALTER TABLE analysis_text ADD COLUMN text_en TEXT')
+            logger.info("Added text_en column to analysis_text")
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS analysis_audio (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER,
                 transcription TEXT,
+                transcription_ru TEXT,
+                transcription_uk TEXT,
+                transcription_en TEXT,
                 filename TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        cursor = await db.execute("PRAGMA table_info(analysis_audio)")
+        columns = await cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        if 'transcription_ru' not in column_names:
+            await db.execute('ALTER TABLE analysis_audio ADD COLUMN transcription_ru TEXT')
+            logger.info("Added transcription_ru column to analysis_audio")
+        if 'transcription_uk' not in column_names:
+            await db.execute('ALTER TABLE analysis_audio ADD COLUMN transcription_uk TEXT')
+            logger.info("Added transcription_uk column to analysis_audio")
+        if 'transcription_en' not in column_names:
+            await db.execute('ALTER TABLE analysis_audio ADD COLUMN transcription_en TEXT')
+            logger.info("Added transcription_en column to analysis_audio")
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS analysis_video (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER,
                 transcription TEXT,
+                transcription_ru TEXT,
+                transcription_uk TEXT,
+                transcription_en TEXT,
                 filename TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        cursor = await db.execute("PRAGMA table_info(analysis_video)")
+        columns = await cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        if 'transcription_ru' not in column_names:
+            await db.execute('ALTER TABLE analysis_video ADD COLUMN transcription_ru TEXT')
+            logger.info("Added transcription_ru column to analysis_video")
+        if 'transcription_uk' not in column_names:
+            await db.execute('ALTER TABLE analysis_video ADD COLUMN transcription_uk TEXT')
+            logger.info("Added transcription_uk column to analysis_video")
+        if 'transcription_en' not in column_names:
+            await db.execute('ALTER TABLE analysis_video ADD COLUMN transcription_en TEXT')
+            logger.info("Added transcription_en column to analysis_video")
         
         await db.execute('''
             CREATE TABLE IF NOT EXISTS analysis_sms (
