@@ -43,7 +43,7 @@ async def _translate(text, target_lang):
                     {"role": "user", "content": prompt}
                 ]
             ),
-            timeout=120.0
+            timeout=720.0
         )
 
         if not response or not hasattr(response, 'choices') or not response.choices:
