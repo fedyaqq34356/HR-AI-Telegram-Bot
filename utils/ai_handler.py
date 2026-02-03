@@ -138,29 +138,33 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
     
     training_materials = ""
-    if is_in_groups:
-        texts = await get_all_analysis_texts(lang=user_lang)
-        audios = await get_all_analysis_audios(lang=user_lang)
-        videos = await get_all_analysis_videos(lang=user_lang)
+    texts = await get_all_analysis_texts(lang=user_lang)
+    audios = await get_all_analysis_audios(lang=user_lang)
+    videos = await get_all_analysis_videos(lang=user_lang)
+    
+    if texts or audios or videos:
+        training_materials = f"\n\n=== ОБУЧАЮЩИЕ МАТЕРИАЛЫ (язык: {user_lang}) ===\n"
+        training_materials += "КРИТИЧЕСКИ ВАЖНО: Эти материалы содержат ПОЛНУЮ информацию о работе в Halo!\n"
+        training_materials += "Если вопрос касается работы и ответ есть в материалах - отвечай САМОСТОЯТЕЛЬНО с confidence 90-95!\n"
+        training_materials += "НЕ эскалируй вопросы, на которые есть ответ в обучающих материалах!\n\n"
         
-        if texts or audios or videos:
-            training_materials = f"\n\nОБУЧАЮЩИЕ МАТЕРИАЛЫ (на языке {user_lang}):\n"
-            training_materials += "ВНИМАНИЕ: Эти материалы содержат полную информацию о работе. Используй их для ответов с высоким confidence (85-95)!\n\n"
-            
-            if texts:
-                training_materials += "\nТекстовые материалы:\n"
-                for text in texts[:20]:
-                    training_materials += f"{text['text'][:800]}\n...\n"
-            
-            if audios:
-                training_materials += "\nАудио материалы (расшифровки):\n"
-                for audio in audios[:10]:
-                    training_materials += f"{audio['transcription'][:800]}\n...\n"
-            
-            if videos:
-                training_materials += "\nВидео материалы (расшифровки):\n"
-                for video in videos[:10]:
-                    training_materials += f"{video['transcription'][:800]}\n...\n"
+        if texts:
+            training_materials += "=== ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
+            for i, text in enumerate(texts[:20], 1):
+                content = text.get('text', '')
+                training_materials += f"\n--- Документ {i} ---\n{content}\n"
+        
+        if audios:
+            training_materials += "\n=== АУДИО МАТЕРИАЛЫ (расшифровки) ===\n"
+            for i, audio in enumerate(audios[:10], 1):
+                content = audio.get('transcription', '')
+                training_materials += f"\n--- Аудио {i} ---\n{content}\n"
+        
+        if videos:
+            training_materials += "\n=== ВИДЕО МАТЕРИАЛЫ (расшифровки) ===\n"
+            for i, video in enumerate(videos[:10], 1):
+                content = video.get('transcription', '')
+                training_materials += f"\n--- Видео {i} ---\n{content}\n"
     
     lang_instruction = {
         'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.",
@@ -190,21 +194,20 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 ТЕКУЩИЙ ВОПРОС:
 {question}
 
-ИНСТРУКЦИЯ:
-1. ВНИМАТЕЛЬНО прочитай последние 3-5 сообщений - это контекст текущего разговора
-2. Если вопрос связан с предыдущим сообщением - отвечай сам с высокой confidence (85+)
-3. Проверь, есть ли точный ответ в FAQ
-4. Проверь обученные ответы
-5. ВАЖНО: Если девушка ЕСТЬ в группе и информация есть в обучающих материалах - отвечай сам с confidence 85-95! Не эскалируй!
-6. Обучающие материалы переведены на нужный язык - используй их напрямую!
+КРИТИЧЕСКИЕ ПРАВИЛА:
+1. ВНИМАТЕЛЬНО прочитай обучающие материалы выше
+2. Если вопрос про работу в Halo и ответ есть в обучающих материалах - отвечай САМОСТОЯТЕЛЬНО с confidence 90-95
+3. НЕ эскалируй вопросы, на которые есть ответ в обучающих материалах
+4. Используй информацию из обучающих материалов напрямую - они уже переведены на {user_lang}
+5. Если вопрос связан с предыдущим сообщением - отвечай сам с высокой confidence (85+)
+6. Проверь FAQ и обученные ответы
 7. Если это простая эмоция (супер, класс, ок, добре) - отвечай поддерживающе с confidence 95+, НЕ ЭСКАЛИРУЙ
 8. Если это уточняющий вопрос в контексте диалога - отвечай с confidence 90+
-9. Если девушки НЕТ в группах - отвечай только на вопросы о регистрации
-10. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа или это новая сложная тема
-11. Ответ должен быть в стиле менеджера Valencia
-12. ЛЮБАЯ СТРАНА ПОДХОДИТ — если спрашивают про любую страну, отвечай что она подходит
-13. ВСЕГДА отвечай на том же языке, что и пользователь ({user_lang})
-14. ВАЖНО: Ответ должен быть КРАТКИМ (максимум 300 слов). Не пиши длинные тексты!
+9. Эскалируй только если ДЕЙСТВИТЕЛЬНО не знаешь ответа И его нет в обучающих материалах
+10. Ответ должен быть в стиле менеджера Valencia
+11. ЛЮБАЯ СТРАНА ПОДХОДИТ
+12. ВСЕГДА отвечай на языке {user_lang}
+13. Ответ должен быть КРАТКИМ (максимум 200 слов)
 """
     
     return context_prompt
