@@ -1,3 +1,4 @@
+# handlers/analysis.py
 import os
 import logging
 from datetime import datetime
@@ -81,6 +82,8 @@ async def process_analysis_task(message: Message, bot):
     video_count = 0
 
     try:
+        await message.answer("📝 Обрабатываю текстовые сообщения с переводом...")
+
         for msg in messages:
             if msg['message_type'] == 'text':
                 text_count += 1
@@ -93,11 +96,7 @@ async def process_analysis_task(message: Message, bot):
                     f.write(f"From: {msg['username']}\n\n")
                     f.write(msg['content'])
 
-                try:
-                    translations = await translate_ru_to_uk_en(msg['content'])
-                except Exception as e:
-                    logger.error(f"Translation failed for text {msg['message_id']}: {e}")
-                    translations = {'uk': None, 'en': None}
+                translations = await translate_ru_to_uk_en(msg['content'])
 
                 await save_analysis_text(
                     msg['message_id'],
@@ -109,10 +108,10 @@ async def process_analysis_task(message: Message, bot):
                 )
                 await mark_message_processed(msg['message_id'])
 
-                if text_count % 10 == 0:
-                    await message.answer(f"📝 Обработано текстовых сообщений: {text_count}")
+                if text_count % 5 == 0:
+                    await message.answer(f"📝 Обработано текстов: {text_count}")
 
-        await message.answer(f"✅ Текстовые сообщения обработаны: {text_count}\n\n🎤 Обрабатываю аудио...")
+        await message.answer(f"✅ Тексты обработаны: {text_count}\n\n🎤 Обрабатываю аудио с переводом...")
 
         for msg in messages:
             if msg['message_type'] == 'audio':
@@ -139,11 +138,7 @@ async def process_analysis_task(message: Message, bot):
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
 
-                    try:
-                        translations = await translate_ru_to_uk_en(transcription)
-                    except Exception as e:
-                        logger.error(f"Translation failed for audio {msg['message_id']}: {e}")
-                        translations = {'uk': None, 'en': None}
+                    translations = await translate_ru_to_uk_en(transcription)
 
                     await save_analysis_audio(
                         msg['message_id'],
@@ -155,7 +150,7 @@ async def process_analysis_task(message: Message, bot):
                     )
                     await mark_message_processed(msg['message_id'])
 
-                    if audio_count % 5 == 0:
+                    if audio_count % 3 == 0:
                         await message.answer(f"🎤 Обработано аудио: {audio_count}")
 
                 except Exception as e:
@@ -165,7 +160,7 @@ async def process_analysis_task(message: Message, bot):
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
 
-        await message.answer(f"✅ Аудио обработаны: {audio_count}\n\n🎥 Обрабатываю видео...")
+        await message.answer(f"✅ Аудио обработаны: {audio_count}\n\n🎥 Обрабатываю видео с переводом...")
 
         for msg in messages:
             if msg['message_type'] == 'video':
@@ -192,11 +187,7 @@ async def process_analysis_task(message: Message, bot):
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
 
-                    try:
-                        translations = await translate_ru_to_uk_en(transcription)
-                    except Exception as e:
-                        logger.error(f"Translation failed for video {msg['message_id']}: {e}")
-                        translations = {'uk': None, 'en': None}
+                    translations = await translate_ru_to_uk_en(transcription)
 
                     await save_analysis_video(
                         msg['message_id'],
@@ -208,7 +199,7 @@ async def process_analysis_task(message: Message, bot):
                     )
                     await mark_message_processed(msg['message_id'])
 
-                    if video_count % 5 == 0:
+                    if video_count % 3 == 0:
                         await message.answer(f"🎥 Обработано видео: {video_count}")
 
                 except Exception as e:
@@ -218,7 +209,7 @@ async def process_analysis_task(message: Message, bot):
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
 
-        await message.answer(f"✅ Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}")
+        await message.answer(f"✅ Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}\n\nВсе материалы переведены на украинский и английский языки.")
 
     except Exception as e:
         logger.error(f"Error during analysis: {e}", exc_info=True)
