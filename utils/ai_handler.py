@@ -208,6 +208,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 11. ЛЮБАЯ СТРАНА ПОДХОДИТ
 12. ВСЕГДА отвечай на языке {user_lang}
 13. Ответ должен быть КРАТКИМ (максимум 200 слов)
+14. НЕ ИСПОЛЬЗУЙ MARKDOWN - никаких звездочек, подчеркиваний, жирного шрифта
 """
     
     return context_prompt
@@ -661,7 +662,7 @@ async def get_ai_response(user_id, question, is_in_groups=False):
                     {"role": "user", "content": context_prompt}
                 ]
             ),
-            timeout=30.0
+            timeout=60.0
         )
         
         if not response or not hasattr(response, 'choices') or not response.choices:
@@ -686,6 +687,8 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             content = content[7:-3].strip()
         elif content.startswith('```'):
             content = content[3:-3].strip()
+        
+        content = content.replace('**', '').replace('__', '').replace('*', '').replace('_', '')
         
         try:
             result = json.loads(content)
@@ -736,6 +739,8 @@ async def get_ai_response(user_id, question, is_in_groups=False):
         if len(str(result.get('answer', ''))) > 4000:
             logger.warning(f"AI response too long for user {user_id}, truncating")
             result['answer'] = str(result['answer'])[:3800] + "\n\n(продолжение в следующем сообщении...)"
+        
+        result['answer'] = str(result['answer']).replace('**', '').replace('__', '').replace('*', '').replace('_', '')
         
         logger.info(f"AI response for {user_id}: conf={result['confidence']}, esc={result['escalate']}")
         
