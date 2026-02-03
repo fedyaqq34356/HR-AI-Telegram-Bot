@@ -42,7 +42,7 @@ async def check_group_membership(bot, user_id):
     try:
         member = await bot.get_chat_member(GROUP_ID, user_id)
         in_group = member.status in ['member', 'administrator', 'creator']
-        
+
         if in_group:
             await add_user_to_groups(user_id)
             return True
@@ -66,43 +66,43 @@ def get_already_registered_text(user_lang):
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         from keyboards import admin_main_menu
         admin_text = "👋 Привет, администратор!\n\nИспользуй команду /admin для доступа к панели управления"
         await message.answer(admin_text, reply_markup=admin_main_menu())
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     username = message.from_user.username or f"user_{user_id}"
     user = await get_user(user_id)
-    
+
     is_in_group = await check_group_membership(bot, user_id)
-    
+
     if user and user['status'] == 'rejected':
         return
-    
+
     if not user:
         await create_user(user_id, username, language='ru')
-        
+
         greeting_text = "👋 Hello! Привіт! Привет!"
         await message.answer(greeting_text)
-        
+
         language_choice_text = """Выберите язык - напишите ru
 Оберіть мову - напишіть uk
 Choose language - type en"""
-        
+
         await message.answer(language_choice_text)
         await state.set_state(UserStates.choosing_language)
-        
+
     else:
         if is_in_group and user['status'] not in ['registered', 'approved']:
             await update_user_status(user_id, 'registered')
             await state.set_state(UserStates.registered)
-        
+
         user_lang = user['language'] or 'ru'
-        
+
         if is_in_group:
             return_texts = {
                 'ru': "Привет! Чем могу помочь? 😊",
@@ -115,11 +115,11 @@ Choose language - type en"""
                 'uk': "З поверненням! Чим можу допомогти? 😊",
                 'en': "Welcome back! How can I help? 😊"
             }
-        
+
         return_text = return_texts.get(user_lang, return_texts['ru'])
         await message.answer(return_text)
         await save_message(user_id, 'bot', return_text)
-        
+
         status_to_state = {
             'chatting': UserStates.chatting,
             'asking_work_hours': UserStates.asking_work_hours,
@@ -136,12 +136,12 @@ Choose language - type en"""
 @router.message(UserStates.choosing_language, F.text)
 async def handle_language_choice(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     choice = message.text.strip().lower()
-    
+
     if choice == 'ru':
         chosen_lang = 'ru'
     elif choice == 'uk':
@@ -154,15 +154,15 @@ async def handle_language_choice(message: Message, state: FSMContext, bot):
 Choose language - type en"""
         await message.answer(repeat_text)
         return
-    
+
     await update_user_language(user_id, chosen_lang)
-    
+
     is_in_group = await check_group_membership(bot, user_id)
-    
+
     if is_in_group:
         await update_user_status(user_id, 'registered')
         await state.set_state(UserStates.registered)
-        
+
         return_texts = {
             'ru': "Привет! Чем могу помочь? 😊",
             'uk': "Привіт! Чим можу допомогти? 😊",
@@ -174,34 +174,34 @@ Choose language - type en"""
     else:
         await update_user_status(user_id, 'chatting')
         await state.set_state(UserStates.chatting)
-        
+
         welcome_msg = await get_setting(f'welcome_message_{chosen_lang}')
         if not welcome_msg:
             welcome_msg = await get_setting('welcome_message_ru')
-        
+
         await message.answer(welcome_msg)
         await save_message(user_id, 'bot', welcome_msg)
 
 @router.message(UserStates.chatting, F.photo)
 async def handle_photo_in_chatting(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     user = await get_user(user_id)
-    
+
     if user['status'] not in ['new', 'chatting', 'waiting_photos']:
         logger.info(f"User {user_id} sent photo but in status {user['status']}, ignoring")
         return
-    
+
     photos_count = user['photos_count']
-    
+
     if photos_count >= PHOTOS_MAX:
         user_lang = user['language'] or 'ru'
         max_texts = {
@@ -213,28 +213,28 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         await message.answer(max_text)
         await save_message(user_id, 'bot', max_text)
         return
-    
+
     media_group_id = message.media_group_id
-    
+
     if media_group_id:
         if media_group_id not in photo_group_cache:
             photo_group_cache[media_group_id] = {
                 'photos': [],
                 'processed': False
             }
-        
+
         if not photo_group_cache[media_group_id]['processed']:
             photo_group_cache[media_group_id]['photos'].append(message.photo[-1].file_id)
-            
+
             await asyncio.sleep(1.0)
-            
+
             if media_group_id in photo_group_cache and not photo_group_cache[media_group_id]['processed']:
                 photos_in_group = photo_group_cache[media_group_id]['photos']
                 photo_group_cache[media_group_id]['processed'] = True
-                
+
                 current_count = (await get_user(user_id))['photos_count']
                 total_photos = current_count + len(photos_in_group)
-                
+
                 if total_photos > PHOTOS_MAX:
                     user_lang = user['language'] or 'ru'
                     limit_texts = {
@@ -247,17 +247,17 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
                     await save_message(user_id, 'bot', limit_text)
                     del photo_group_cache[media_group_id]
                     return
-                
+
                 for file_id in photos_in_group:
                     await save_photo(user_id, file_id)
-                
+
                 await save_message(user_id, 'user', f'[Отправлено {len(photos_in_group)} фото]')
-                
+
                 del photo_group_cache[media_group_id]
-                
+
                 user = await get_user(user_id)
                 photos_count = user['photos_count']
-                
+
                 if photos_count < PHOTOS_MIN:
                     remaining = PHOTOS_MIN - photos_count
                     user_lang = user['language'] or 'ru'
@@ -286,7 +286,7 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
         await save_photo(user_id, file_id)
         await save_message(user_id, 'user', '[Отправлено фото]')
         photos_count += 1
-        
+
         if photos_count < PHOTOS_MIN:
             remaining = PHOTOS_MIN - photos_count
             user_lang = user['language'] or 'ru'
@@ -315,22 +315,22 @@ async def handle_photo_in_chatting(message: Message, state: FSMContext):
 async def handle_work_hours(message: Message, state: FSMContext):
     if message.from_user.id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(message.from_user.id):
         return
-    
+
     user_id = message.from_user.id
     await unhide_user_on_activity(user_id)
-    
+
     await save_message(user_id, 'user', message.text)
-    
+
     await state.update_data(work_hours=message.text)
     await update_user_status(user_id, 'asking_experience')
     await state.set_state(UserStates.asking_experience)
-    
+
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
-    
+
     question_texts = {
         'ru': "2️⃣ Был ли у тебя опыт работы в похожих приложениях или платформах?\n(Если да — опиши кратко. Если нет — так и напиши)",
         'uk': "2️⃣ Чи був у тебе досвід роботи в подібних застосунках або платформах?\n(Якщо так — опиши коротко. Якщо ні — так і напиши)",
@@ -343,59 +343,59 @@ async def handle_work_hours(message: Message, state: FSMContext):
 @router.message(UserStates.asking_experience, F.text)
 async def handle_experience(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     from database import create_application, get_photos
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     await save_message(user_id, 'user', message.text)
-    
+
     data = await state.get_data()
     work_hours = data.get('work_hours')
     experience = message.text
-    
+
     await create_application(user_id, work_hours, experience)
     await update_user_status(user_id, 'pending_review')
     await state.set_state(UserStates.pending_review)
-    
+
     user = await get_user(user_id)
     photos = await get_photos(user_id)
-    
+
     user_display = get_user_display_name({
         'username': user['username'],
         'first_name': message.from_user.first_name,
         'user_id': user_id
     })
-    
+
     username = user['username']
     user_link = f"https://t.me/{username}" if username else f"tg://user?id={user_id}"
-    
+
     card_text = f"👤 {user_display}\n"
     card_text += f"🔗 {user_link}\n\n"
     card_text += f"⏰ Время: {work_hours}\n"
     card_text += f"💼 Опыт: {experience}\n\n"
-    
+
     await bot.send_message(ADMIN_ID, card_text)
-    
+
     from aiogram.types import InputMediaPhoto
     media_group = [InputMediaPhoto(media=photo['file_id']) for photo in photos]
-    
+
     if media_group:
         await bot.send_media_group(ADMIN_ID, media=media_group)
-    
+
     from keyboards import admin_review_keyboard
     await bot.send_message(
         ADMIN_ID,
         f"Принять решение по {user_display}:",
         reply_markup=admin_review_keyboard(user_id)
     )
-    
+
     user_lang = user['language'] or 'ru'
     response_texts = {
         'ru': "Спасибо! Твоя заявка отправлена на рассмотрение 😊",
@@ -409,51 +409,55 @@ async def handle_experience(message: Message, state: FSMContext, bot):
 @router.message(UserStates.helping_registration, F.text)
 async def handle_registration_questions(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
-    
+
     if is_review_request(question):
         await send_reviews(message, user_lang)
         return
-    
+
     await save_message(user_id, 'user', question)
-    
+
     await bot.send_chat_action(user_id, "typing")
-    
+
+    in_groups = await is_user_in_groups(user_id)
+    if not in_groups:
+        in_groups = await check_group_membership(bot, user_id)
+
     import time
     start_time = time.time()
-    
-    ai_result = await get_ai_response_with_retry(user_id, question)
-    
+
+    ai_result = await get_ai_response_with_retry(user_id, question, is_in_groups=in_groups)
+
     elapsed = time.time() - start_time
     if elapsed < 1:
         await asyncio.sleep(1 - elapsed)
-    
+
     if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
         await save_pending_question(user_id, question)
-        
+
         user_display = get_user_display_name({
             'username': user['username'],
             'first_name': message.from_user.first_name,
             'user_id': user_id
         })
-        
+
         await bot.send_message(
             ADMIN_ID,
             f"❓ Вопрос о регистрации от {user_display}:\n\n{question}",
             reply_markup=admin_answer_keyboard(user_id)
         )
-        
+
         escalate_texts = {
             'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
             'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
@@ -471,43 +475,43 @@ async def handle_registration_questions(message: Message, state: FSMContext, bot
 @router.message(UserStates.helping_registration, F.photo)
 async def handle_photo_during_registration(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
-    
+
     from handlers.screenshot import handle_screenshot
     await handle_screenshot(message, message.bot, state)
 
 @router.message(UserStates.waiting_admin, F.text)
 async def handle_waiting_admin(message: Message, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
-    
+
     if is_review_request(question):
         await send_reviews(message, user_lang)
         return
-    
+
     await save_message(user_id, 'user', question)
-    
+
     wait_texts = {
         'ru': "Твой вопрос передан менеджеру, скоро тебе ответят! 😊",
         'uk': "Твоє питання передане менеджеру, скоро тобі відповідять! 😊",
@@ -516,13 +520,13 @@ async def handle_waiting_admin(message: Message, bot):
     wait_text = wait_texts.get(user_lang, wait_texts['ru'])
     await message.answer(wait_text)
     await save_message(user_id, 'bot', wait_text)
-    
+
     user_display = get_user_display_name({
         'username': user['username'],
         'first_name': message.from_user.first_name,
         'user_id': user_id
     })
-    
+
     await bot.send_message(
         ADMIN_ID,
         f"❓ Дополнительный вопрос от {user_display}:\n\n{question}",
@@ -532,64 +536,64 @@ async def handle_waiting_admin(message: Message, bot):
 @router.message(UserStates.registered, F.text)
 async def handle_registered_user(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
-    
+
     if is_registration_intent(question):
         already_text = get_already_registered_text(user_lang)
         await message.answer(already_text)
         await save_message(user_id, 'bot', already_text)
         return
-    
+
     if is_review_request(question):
         await send_reviews(message, user_lang)
         return
-    
+
     await save_message(user_id, 'user', question)
-    
+
     in_groups = await is_user_in_groups(user_id)
     if not in_groups:
         in_groups = await check_group_membership(bot, user_id)
-    
+
     await bot.send_chat_action(user_id, "typing")
-    
+
     import time
     start_time = time.time()
-    
+
     ai_result = await get_ai_response_with_retry(user_id, question, is_in_groups=in_groups)
-    
+
     elapsed = time.time() - start_time
     if elapsed < 1:
         await asyncio.sleep(1 - elapsed)
-    
+
     if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
         await update_user_status(user_id, 'waiting_admin')
         await state.set_state(UserStates.waiting_admin)
-        
+
         await save_pending_question(user_id, question)
-        
+
         user_display = get_user_display_name({
             'username': user['username'],
             'first_name': message.from_user.first_name,
             'user_id': user_id
         })
-        
+
         await bot.send_message(
             ADMIN_ID,
             f"❓ Вопрос от {user_display}:\n\n{question}",
             reply_markup=admin_answer_keyboard(user_id)
         )
-        
+
         escalate_texts = {
             'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
             'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
@@ -607,17 +611,17 @@ async def handle_registered_user(message: Message, state: FSMContext, bot):
 @router.message(UserStates.registered, F.photo)
 async def handle_screenshot_from_registered(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     user = await get_user(user_id)
-    
+
     if user['status'] in ['registered', 'approved']:
         user_lang = user['language'] or 'ru'
         already_texts = {
@@ -627,64 +631,68 @@ async def handle_screenshot_from_registered(message: Message, state: FSMContext)
         }
         await message.answer(already_texts.get(user_lang, already_texts['ru']))
         return
-    
+
     await update_user_status(user_id, 'waiting_screenshot')
     await state.set_state(UserStates.waiting_screenshot)
-    
+
     from handlers.screenshot import handle_screenshot
     await handle_screenshot(message, message.bot, state)
 
 @router.message(UserStates.chatting, F.text)
 async def handle_question(message: Message, state: FSMContext, bot):
     user_id = message.from_user.id
-    
+
     if user_id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(user_id):
         return
-    
+
     await unhide_user_on_activity(user_id)
-    
+
     question = message.text
     user = await get_user(user_id)
     user_lang = user['language'] or 'ru'
-    
+
     if is_review_request(question):
         await send_reviews(message, user_lang)
         return
-    
+
     await save_message(user_id, 'user', question)
-    
+
+    in_groups = await is_user_in_groups(user_id)
+    if not in_groups:
+        in_groups = await check_group_membership(bot, user_id)
+
     await bot.send_chat_action(user_id, "typing")
-    
+
     import time
     start_time = time.time()
-    
-    ai_result = await get_ai_response_with_retry(user_id, question)
-    
+
+    ai_result = await get_ai_response_with_retry(user_id, question, is_in_groups=in_groups)
+
     elapsed = time.time() - start_time
     if elapsed < 1:
         await asyncio.sleep(1 - elapsed)
-    
+
     if ai_result['escalate'] or ai_result['confidence'] < AI_CONFIDENCE_THRESHOLD:
         await update_user_status(user_id, 'waiting_admin')
         await state.set_state(UserStates.waiting_admin)
-        
+
         await save_pending_question(user_id, question)
-        
+
         user_display = get_user_display_name({
             'username': user['username'],
             'first_name': message.from_user.first_name,
             'user_id': user_id
         })
-        
+
         await bot.send_message(
             ADMIN_ID,
             f"❓ Вопрос от {user_display}:\n\n{question}",
             reply_markup=admin_answer_keyboard(user_id)
         )
-        
+
         escalate_texts = {
             'ru': "Передаю твой вопрос менеджеру, скоро получишь ответ! 😊",
             'uk': "Передаю твоє питання менеджеру, скоро отримаєш відповідь! 😊",
@@ -703,6 +711,6 @@ async def handle_question(message: Message, state: FSMContext, bot):
 async def block_rejected_users(message: Message):
     if message.from_user.id == ADMIN_ID:
         return
-    
+
     if await is_user_rejected(message.from_user.id):
         return

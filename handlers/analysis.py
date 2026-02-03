@@ -16,14 +16,14 @@ for directory in [ANALYSIS_TEXT_DIR, ANALYSIS_AUDIO_DIR, ANALYSIS_VIDEO_DIR]:
 @router.message(F.text, F.chat.type.in_({'group', 'supergroup', 'channel'}))
 async def capture_group_text(message: Message):
     logger.info(f"Received text from chat_id={message.chat.id}, type={message.chat.type}")
-    
+
     if message.text and message.text.startswith('/'):
         logger.info(f"Skipping command: {message.text}")
         return
-    
+
     from database.group_messages import save_group_message
     username = message.from_user.username if message.from_user else 'Unknown'
-    
+
     await save_group_message(
         message_id=message.message_id,
         message_type='text',
@@ -35,7 +35,7 @@ async def capture_group_text(message: Message):
 @router.message(F.voice | F.audio, F.chat.type.in_({'group', 'supergroup', 'channel'}))
 async def capture_group_audio(message: Message):
     logger.info(f"Received audio from chat_id={message.chat.id}, type={message.chat.type}")
-    
+
     from database.group_messages import save_group_message
     username = message.from_user.username if message.from_user else 'Unknown'
     audio = message.voice or message.audio
@@ -50,7 +50,7 @@ async def capture_group_audio(message: Message):
 @router.message(F.video | F.video_note, F.chat.type.in_({'group', 'supergroup', 'channel'}))
 async def capture_group_video(message: Message):
     logger.info(f"Received video from chat_id={message.chat.id}, type={message.chat.type}")
-    
+
     from database.group_messages import save_group_message
     username = message.from_user.username if message.from_user else 'Unknown'
     video = message.video or message.video_note
@@ -66,161 +66,161 @@ async def capture_group_video(message: Message):
 async def cmd_start_analysis(message: Message, bot):
     if message.from_user.id != ADMIN_ID:
         return
-    
+
     from database.analysis import save_analysis_text, save_analysis_audio, save_analysis_video, clear_analysis_data
     from database.group_messages import get_unprocessed_messages, mark_message_processed
     from utils.audio_transcription import transcribe_audio
-    from utils.translator import translate_to_all_languages
-    
+    from utils.translator import translate_ru_to_uk_en
+
     await clear_analysis_data()
-    
+
     await message.answer("🔍 Начинаю анализ сохраненных сообщений из групп...")
-    
+
     messages = await get_unprocessed_messages()
-    
+
     if not messages:
         await message.answer("❌ Нет новых сообщений для обработки. Бот должен быть добавлен в группы для автоматического сбора сообщений.")
         return
-    
+
     text_count = 0
     audio_count = 0
     video_count = 0
-    
+
     try:
         for msg in messages:
             if msg['message_type'] == 'text':
                 text_count += 1
                 filename = f"text_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                 filepath = os.path.join(ANALYSIS_TEXT_DIR, filename)
-                
+
                 with open(filepath, 'w', encoding='utf-8') as f:
                     f.write(f"Message ID: {msg['message_id']}\n")
                     f.write(f"Date: {msg['timestamp']}\n")
                     f.write(f"From: {msg['username']}\n\n")
                     f.write(msg['content'])
-                
+
                 logger.info(f"Translating text message {msg['message_id']}...")
-                translations = await translate_to_all_languages(msg['content'])
-                
+                translations = await translate_ru_to_uk_en(msg['content'])
+
                 await save_analysis_text(
-                    msg['message_id'], 
-                    msg['content'], 
+                    msg['message_id'],
+                    msg['content'],
                     filename,
-                    text_ru=translations['ru'],
+                    text_ru=msg['content'],
                     text_uk=translations['uk'],
                     text_en=translations['en']
                 )
                 await mark_message_processed(msg['message_id'])
-                
+
                 if text_count % 10 == 0:
                     await message.answer(f"📝 Обработано текстовых сообщений: {text_count}")
-        
+
         await message.answer(f"✅ Текстовые сообщения обработаны: {text_count}\n\n🎤 Обрабатываю аудио...")
-        
+
         for msg in messages:
             if msg['message_type'] == 'audio':
                 audio_count += 1
-                
+
                 temp_filename = f"temp_audio_{msg['message_id']}.ogg"
-                
+
                 try:
                     file = await bot.get_file(msg['file_id'])
-                    
+
                     if file.file_size and file.file_size > 20 * 1024 * 1024:
                         logger.warning(f"Audio {msg['message_id']} is too big ({file.file_size} bytes), skipping")
                         await mark_message_processed(msg['message_id'])
                         continue
-                    
+
                     await bot.download_file(file.file_path, temp_filename)
-                    
+
                     transcription = await transcribe_audio(temp_filename)
-                    
+
                     filename = f"audio_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                     filepath = os.path.join(ANALYSIS_AUDIO_DIR, filename)
-                    
+
                     with open(filepath, 'w', encoding='utf-8') as f:
                         f.write(f"Message ID: {msg['message_id']}\n")
                         f.write(f"Date: {msg['timestamp']}\n")
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
-                    
+
                     logger.info(f"Translating audio transcription {msg['message_id']}...")
-                    translations = await translate_to_all_languages(transcription)
-                    
+                    translations = await translate_ru_to_uk_en(transcription)
+
                     await save_analysis_audio(
-                        msg['message_id'], 
-                        transcription, 
+                        msg['message_id'],
+                        transcription,
                         filename,
-                        transcription_ru=translations['ru'],
+                        transcription_ru=transcription,
                         transcription_uk=translations['uk'],
                         transcription_en=translations['en']
                     )
                     await mark_message_processed(msg['message_id'])
-                    
+
                     if audio_count % 5 == 0:
                         await message.answer(f"🎤 Обработано аудио: {audio_count}")
-                    
+
                 except Exception as e:
                     logger.error(f"Error transcribing audio {msg['message_id']}: {e}")
                     await mark_message_processed(msg['message_id'])
                 finally:
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
-        
+
         await message.answer(f"✅ Аудио обработаны: {audio_count}\n\n🎥 Обрабатываю видео...")
-        
+
         for msg in messages:
             if msg['message_type'] == 'video':
                 video_count += 1
-                
+
                 temp_filename = f"temp_video_{msg['message_id']}.mp4"
-                
+
                 try:
                     file = await bot.get_file(msg['file_id'])
-                    
+
                     if file.file_size and file.file_size > 20 * 1024 * 1024:
                         logger.warning(f"Video {msg['message_id']} is too big ({file.file_size} bytes), skipping")
                         await mark_message_processed(msg['message_id'])
                         continue
-                    
+
                     await bot.download_file(file.file_path, temp_filename)
-                    
+
                     transcription = await transcribe_audio(temp_filename)
-                    
+
                     filename = f"video_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                     filepath = os.path.join(ANALYSIS_VIDEO_DIR, filename)
-                    
+
                     with open(filepath, 'w', encoding='utf-8') as f:
                         f.write(f"Message ID: {msg['message_id']}\n")
                         f.write(f"Date: {msg['timestamp']}\n")
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
-                    
+
                     logger.info(f"Translating video transcription {msg['message_id']}...")
-                    translations = await translate_to_all_languages(transcription)
-                    
+                    translations = await translate_ru_to_uk_en(transcription)
+
                     await save_analysis_video(
-                        msg['message_id'], 
-                        transcription, 
+                        msg['message_id'],
+                        transcription,
                         filename,
-                        transcription_ru=translations['ru'],
+                        transcription_ru=transcription,
                         transcription_uk=translations['uk'],
                         transcription_en=translations['en']
                     )
                     await mark_message_processed(msg['message_id'])
-                    
+
                     if video_count % 5 == 0:
                         await message.answer(f"🎥 Обработано видео: {video_count}")
-                    
+
                 except Exception as e:
                     logger.error(f"Error transcribing video {msg['message_id']}: {e}")
                     await mark_message_processed(msg['message_id'])
                 finally:
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
-        
-        await message.answer(f"✅ Видео обработаны: {video_count}\n\n🎉 Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}\n\nВсе материалы переведены на русский, украинский и английский языки ✅")
-        
+
+        await message.answer(f"✅ Видео обработаны: {video_count}\n\n🎉 Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}\n\nВсе материалы переведены на украинский и английский языки ✅")
+
     except Exception as e:
         logger.error(f"Error during analysis: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка при анализе: {e}")
@@ -229,10 +229,10 @@ async def cmd_start_analysis(message: Message, bot):
 async def cmd_clear_analysis(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
-    
+
     from database.group_messages import clear_group_messages
     from database.analysis import clear_analysis_data
-    
+
     await clear_group_messages()
     await clear_analysis_data()
     await message.answer("✅ Все сохраненные сообщения и анализы очищены")

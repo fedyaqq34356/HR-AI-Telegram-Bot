@@ -7,7 +7,7 @@ import g4f
 logger = logging.getLogger(__name__)
 
 all_providers = [
-    provider for provider in g4f.Provider.__providers__ 
+    provider for provider in g4f.Provider.__providers__
     if provider.working
 ]
 
@@ -15,26 +15,25 @@ client = Client(
     provider=RetryProvider(all_providers, shuffle=True)
 )
 
-async def translate_text(text, target_lang):
+async def _translate(text, target_lang):
     if not text or len(text.strip()) < 3:
         return text
-    
+
     lang_names = {
-        'ru': 'Russian',
         'uk': 'Ukrainian',
         'en': 'English'
     }
-    
-    target_lang_name = lang_names.get(target_lang, 'Russian')
-    
-    prompt = f"""Translate this text to {target_lang_name}. 
-Keep the same style and tone. 
-Do not add any explanations or comments.
-Return ONLY the translated text.
 
-Text to translate:
-{text}"""
-    
+    target_lang_name = lang_names.get(target_lang, 'English')
+
+    prompt = (
+        f"Translate this text to {target_lang_name}.\n"
+        "Keep the same style and tone.\n"
+        "Do not add any explanations or comments.\n"
+        "Return ONLY the translated text.\n\n"
+        f"Text to translate:\n{text}"
+    )
+
     try:
         response = await asyncio.wait_for(
             asyncio.to_thread(
@@ -46,19 +45,19 @@ Text to translate:
             ),
             timeout=30.0
         )
-        
+
         if not response or not hasattr(response, 'choices') or not response.choices:
             logger.warning(f"Translation failed for lang={target_lang}")
             return None
-        
+
         translated = response.choices[0].message.content.strip()
-        
+
         if translated.startswith('```'):
             translated = translated.split('```')[1].strip()
-        
+
         logger.info(f"Translated to {target_lang}: {len(translated)} chars")
         return translated
-        
+
     except asyncio.TimeoutError:
         logger.error(f"Translation timeout for lang={target_lang}")
         return None
@@ -66,22 +65,14 @@ Text to translate:
         logger.error(f"Translation error for lang={target_lang}: {e}")
         return None
 
-async def translate_to_all_languages(text):
-    translations = {
-        'ru': None,
-        'uk': None,
-        'en': None
+async def translate_ru_to_uk_en(text):
+    uk_task = asyncio.create_task(_translate(text, 'uk'))
+    en_task = asyncio.create_task(_translate(text, 'en'))
+
+    uk_result, en_result = await asyncio.gather(uk_task, en_task)
+
+    return {
+        'ru': text,
+        'uk': uk_result,
+        'en': en_result
     }
-    
-    from utils.language_detector import detect_language
-    source_lang = detect_language(text)
-    
-    translations[source_lang] = text
-    
-    for lang in ['ru', 'uk', 'en']:
-        if lang != source_lang:
-            translated = await translate_text(text, lang)
-            translations[lang] = translated
-            await asyncio.sleep(1)
-    
-    return translations
