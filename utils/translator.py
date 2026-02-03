@@ -43,7 +43,7 @@ async def _translate(text, target_lang):
                     {"role": "user", "content": prompt}
                 ]
             ),
-            timeout=30.0
+            timeout=45.0
         )
 
         if not response or not hasattr(response, 'choices') or not response.choices:
@@ -66,10 +66,14 @@ async def _translate(text, target_lang):
         return None
 
 async def translate_ru_to_uk_en(text):
-    uk_task = asyncio.create_task(_translate(text, 'uk'))
-    en_task = asyncio.create_task(_translate(text, 'en'))
+    results = await asyncio.gather(
+        _translate(text, 'uk'),
+        _translate(text, 'en'),
+        return_exceptions=True
+    )
 
-    uk_result, en_result = await asyncio.gather(uk_task, en_task)
+    uk_result = results[0] if not isinstance(results[0], Exception) else None
+    en_result = results[1] if not isinstance(results[1], Exception) else None
 
     return {
         'ru': text,

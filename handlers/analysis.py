@@ -62,11 +62,7 @@ async def capture_group_video(message: Message):
     )
     logger.info(f"✅ Captured video message {message.message_id} from group {message.chat.id}")
 
-@router.message(Command("startanal"))
-async def cmd_start_analysis(message: Message, bot):
-    if message.from_user.id != ADMIN_ID:
-        return
-
+async def process_analysis_task(message: Message, bot):
     from database.analysis import save_analysis_text, save_analysis_audio, save_analysis_video, clear_analysis_data
     from database.group_messages import get_unprocessed_messages, mark_message_processed
     from utils.audio_transcription import transcribe_audio
@@ -74,12 +70,10 @@ async def cmd_start_analysis(message: Message, bot):
 
     await clear_analysis_data()
 
-    await message.answer("🔍 Начинаю анализ сохраненных сообщений из групп...")
-
     messages = await get_unprocessed_messages()
 
     if not messages:
-        await message.answer("❌ Нет новых сообщений для обработки. Бот должен быть добавлен в группы для автоматического сбора сообщений.")
+        await message.answer("❌ Нет новых сообщений для обработки.")
         return
 
     text_count = 0
@@ -99,8 +93,11 @@ async def cmd_start_analysis(message: Message, bot):
                     f.write(f"From: {msg['username']}\n\n")
                     f.write(msg['content'])
 
-                logger.info(f"Translating text message {msg['message_id']}...")
-                translations = await translate_ru_to_uk_en(msg['content'])
+                try:
+                    translations = await translate_ru_to_uk_en(msg['content'])
+                except Exception as e:
+                    logger.error(f"Translation failed for text {msg['message_id']}: {e}")
+                    translations = {'uk': None, 'en': None}
 
                 await save_analysis_text(
                     msg['message_id'],
@@ -120,19 +117,17 @@ async def cmd_start_analysis(message: Message, bot):
         for msg in messages:
             if msg['message_type'] == 'audio':
                 audio_count += 1
-
                 temp_filename = f"temp_audio_{msg['message_id']}.ogg"
 
                 try:
                     file = await bot.get_file(msg['file_id'])
 
                     if file.file_size and file.file_size > 20 * 1024 * 1024:
-                        logger.warning(f"Audio {msg['message_id']} is too big ({file.file_size} bytes), skipping")
+                        logger.warning(f"Audio {msg['message_id']} too big, skipping")
                         await mark_message_processed(msg['message_id'])
                         continue
 
                     await bot.download_file(file.file_path, temp_filename)
-
                     transcription = await transcribe_audio(temp_filename)
 
                     filename = f"audio_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -144,8 +139,11 @@ async def cmd_start_analysis(message: Message, bot):
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
 
-                    logger.info(f"Translating audio transcription {msg['message_id']}...")
-                    translations = await translate_ru_to_uk_en(transcription)
+                    try:
+                        translations = await translate_ru_to_uk_en(transcription)
+                    except Exception as e:
+                        logger.error(f"Translation failed for audio {msg['message_id']}: {e}")
+                        translations = {'uk': None, 'en': None}
 
                     await save_analysis_audio(
                         msg['message_id'],
@@ -161,7 +159,7 @@ async def cmd_start_analysis(message: Message, bot):
                         await message.answer(f"🎤 Обработано аудио: {audio_count}")
 
                 except Exception as e:
-                    logger.error(f"Error transcribing audio {msg['message_id']}: {e}")
+                    logger.error(f"Error processing audio {msg['message_id']}: {e}")
                     await mark_message_processed(msg['message_id'])
                 finally:
                     if os.path.exists(temp_filename):
@@ -172,19 +170,17 @@ async def cmd_start_analysis(message: Message, bot):
         for msg in messages:
             if msg['message_type'] == 'video':
                 video_count += 1
-
                 temp_filename = f"temp_video_{msg['message_id']}.mp4"
 
                 try:
                     file = await bot.get_file(msg['file_id'])
 
                     if file.file_size and file.file_size > 20 * 1024 * 1024:
-                        logger.warning(f"Video {msg['message_id']} is too big ({file.file_size} bytes), skipping")
+                        logger.warning(f"Video {msg['message_id']} too big, skipping")
                         await mark_message_processed(msg['message_id'])
                         continue
 
                     await bot.download_file(file.file_path, temp_filename)
-
                     transcription = await transcribe_audio(temp_filename)
 
                     filename = f"video_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -196,8 +192,11 @@ async def cmd_start_analysis(message: Message, bot):
                         f.write(f"From: {msg['username']}\n\n")
                         f.write(transcription)
 
-                    logger.info(f"Translating video transcription {msg['message_id']}...")
-                    translations = await translate_ru_to_uk_en(transcription)
+                    try:
+                        translations = await translate_ru_to_uk_en(transcription)
+                    except Exception as e:
+                        logger.error(f"Translation failed for video {msg['message_id']}: {e}")
+                        translations = {'uk': None, 'en': None}
 
                     await save_analysis_video(
                         msg['message_id'],
@@ -213,17 +212,27 @@ async def cmd_start_analysis(message: Message, bot):
                         await message.answer(f"🎥 Обработано видео: {video_count}")
 
                 except Exception as e:
-                    logger.error(f"Error transcribing video {msg['message_id']}: {e}")
+                    logger.error(f"Error processing video {msg['message_id']}: {e}")
                     await mark_message_processed(msg['message_id'])
                 finally:
                     if os.path.exists(temp_filename):
                         os.remove(temp_filename)
 
-        await message.answer(f"✅ Видео обработаны: {video_count}\n\n🎉 Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}\n\nВсе материалы переведены на украинский и английский языки ✅")
+        await message.answer(f"✅ Анализ завершен!\n\n📊 Итого:\n📝 Тексты: {text_count}\n🎤 Аудио: {audio_count}\n🎥 Видео: {video_count}")
 
     except Exception as e:
         logger.error(f"Error during analysis: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка при анализе: {e}")
+
+@router.message(Command("startanal"))
+async def cmd_start_analysis(message: Message, bot):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    await message.answer("🔍 Начинаю анализ в фоновом режиме. Бот продолжит работать.")
+    
+    import asyncio
+    asyncio.create_task(process_analysis_task(message, bot))
 
 @router.message(Command("clearanal"))
 async def cmd_clear_analysis(message: Message):
