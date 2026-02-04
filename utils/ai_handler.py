@@ -409,6 +409,47 @@ def find_relevant_knowledge(question, user_lang='ru'):
     
     return relevant
 
+
+def find_relevant_materials(question, materials, max_results=3):
+    """Находит наиболее релевантные материалы по вопросу"""
+    if not materials:
+        return []
+    
+    question_lower = question.lower()
+    scored_materials = []
+    
+    for material in materials:
+        content = material.get('text') or material.get('transcription', '')
+        if not content:
+            continue
+        
+        content_lower = content.lower()
+        score = 0
+        
+        # Разбиваем вопрос на слова (слова длиннее 3 символов)
+        question_words = [w for w in question_lower.split() if len(w) > 3]
+        
+        # Подсчитываем совпадения слов
+        for word in question_words:
+            if word in content_lower:
+                score += content_lower.count(word) * 2
+        
+        # Проверяем ключевые слова по категориям
+        for category, keywords in KNOWLEDGE_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in question_lower and keyword in content_lower:
+                    score += 10
+        
+        if score > 0:
+            scored_materials.append((score, material, content))
+    
+    # Сортируем по релевантности (от большего к меньшему)
+    scored_materials.sort(key=lambda x: x[0], reverse=True)
+    
+    # Возвращаем топ материалов с их содержимым
+    return [(m, c) for _, m, c in scored_materials[:max_results]]
+
+
 # ============ СУЩЕСТВУЮЩИЙ КОД ПРОДОЛЖАЕТСЯ ============
 
 COUNTRY_KEYWORDS = [
@@ -556,34 +597,63 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
         knowledge_section += "\n\n".join(relevant_knowledge[:5])
         knowledge_section += "\n(Используй ЭТИ знания в первую очередь для ответа)\n"
     
+# УЛУЧШЕННЫЙ ПОИСК РЕЛЕВАНТНЫХ МАТЕРИАЛОВ
     training_materials = ""
+    
+    # Получаем ВСЕ материалы на нужном языке
     texts_all = await get_all_analysis_texts(lang=question_lang)
     audios_all = await get_all_analysis_audios(lang=question_lang)
     videos_all = await get_all_analysis_videos(lang=question_lang)
     
-    if texts_all or audios_all or videos_all:
-        training_materials = f"\n\n=== ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ЯЗЫК: {question_lang.upper()}) ===\n"
+    # Находим РЕЛЕВАНТНЫЕ материалы по вопросу
+    relevant_texts = find_relevant_materials(question, texts_all, max_results=5)
+    relevant_audios = find_relevant_materials(question, audios_all, max_results=3)
+    relevant_videos = find_relevant_materials(question, videos_all, max_results=3)
+    
+    if relevant_texts or relevant_audios or relevant_videos:
+        training_materials = f"\n\n=== РЕЛЕВАНТНЫЕ ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ЯЗЫК: {question_lang.upper()}) ===\n"
+        training_materials += "⚠️ ЭТИ МАТЕРИАЛЫ СПЕЦИАЛЬНО ОТОБРАНЫ ПО ТВОЕМУ ВОПРОСУ - ИСПОЛЬЗУЙ ИХ!\n\n"
         
-        if texts_all:
-            training_materials += "=== ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
-            for i, text in enumerate(texts_all[:15], 1):
-                content = text.get('text', '')
-                if content:
-                    training_materials += f"\n--- Документ {i} ---\n{content[:1000]}\n"
+        if relevant_texts:
+            training_materials += "=== РЕЛЕВАНТНЫЕ ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
+            for i, (text, content) in enumerate(relevant_texts, 1):
+                # Берем больше текста для релевантных материалов
+                training_materials += f"\n--- Документ {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:2000]}\n"
         
-        if audios_all:
-            training_materials += "\n=== АУДИО МАТЕРИАЛЫ (расшифровки) ===\n"
-            for i, audio in enumerate(audios_all[:8], 1):
-                content = audio.get('transcription', '')
-                if content:
-                    training_materials += f"\n--- Аудио {i} ---\n{content[:800]}\n"
+        if relevant_audios:
+            training_materials += "\n=== РЕЛЕВАНТНЫЕ АУДИО МАТЕРИАЛЫ ===\n"
+            for i, (audio, content) in enumerate(relevant_audios, 1):
+                training_materials += f"\n--- Аудио {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
         
-        if videos_all:
-            training_materials += "\n=== ВИДЕО МАТЕРИАЛЫ (расшифровки) ===\n"
-            for i, video in enumerate(videos_all[:8], 1):
-                content = video.get('transcription', '')
-                if content:
-                    training_materials += f"\n--- Видео {i} ---\n{content[:800]}\n"
+        if relevant_videos:
+            training_materials += "\n=== РЕЛЕВАНТНЫЕ ВИДЕО МАТЕРИАЛЫ ===\n"
+            for i, (video, content) in enumerate(relevant_videos, 1):
+                training_materials += f"\n--- Видео {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
+    else:
+        # Если релевантных не найдено, берем первые несколько
+        if texts_all or audios_all or videos_all:
+            training_materials = f"\n\n=== ОБЩИЕ ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ЯЗЫК: {question_lang.upper()}) ===\n"
+            
+            if texts_all:
+                training_materials += "=== ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
+                for i, text in enumerate(texts_all[:5], 1):
+                    content = text.get('text', '')
+                    if content:
+                        training_materials += f"\n--- Документ {i} ---\n{content[:1000]}\n"
+            
+            if audios_all:
+                training_materials += "\n=== АУДИО МАТЕРИАЛЫ ===\n"
+                for i, audio in enumerate(audios_all[:3], 1):
+                    content = audio.get('transcription', '')
+                    if content:
+                        training_materials += f"\n--- Аудио {i} ---\n{content[:800]}\n"
+            
+            if videos_all:
+                training_materials += "\n=== ВИДЕО МАТЕРИАЛЫ ===\n"
+                for i, video in enumerate(videos_all[:3], 1):
+                    content = video.get('transcription', '')
+                    if content:
+                        training_materials += f"\n--- Видео {i} ---\n{content[:800]}\n"
     
     lang_instruction = {
         'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ",
