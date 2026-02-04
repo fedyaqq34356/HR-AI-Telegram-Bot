@@ -1,3 +1,4 @@
+# utils/ai_handler.py
 import json
 import asyncio
 import logging
@@ -87,12 +88,22 @@ def detect_country_in_text(text):
     return None
 
 def is_g4f_error(content):
+    if not content:
+        return True
     c = content.lower()
-    if 'does not exist' in c and ('model' in c or 'https://' in c):
+    if 'does not exist' in c:
         return True
     if 'the model does not' in c:
         return True
-    if c.startswith('error') and ('provider' in c or 'model' in c):
+    if 'model' in c and 'exist' in c:
+        return True
+    if c.startswith('error'):
+        return True
+    if 'api.airforce' in c:
+        return True
+    if 'bad request' in c:
+        return True
+    if len(content.strip()) < 3:
         return True
     return False
 
@@ -145,57 +156,33 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
     
     training_materials = ""
-    texts_all = await get_all_analysis_texts()
-    audios_all = await get_all_analysis_audios()
-    videos_all = await get_all_analysis_videos()
+    texts_all = await get_all_analysis_texts(lang=question_lang)
+    audios_all = await get_all_analysis_audios(lang=question_lang)
+    videos_all = await get_all_analysis_videos(lang=question_lang)
     
     if texts_all or audios_all or videos_all:
-        training_materials = f"\n\n=== ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ВСЕ ЯЗЫКИ) ===\n"
+        training_materials = f"\n\n=== ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ЯЗЫК: {question_lang.upper()}) ===\n"
         
         if texts_all:
             training_materials += "=== ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
             for i, text in enumerate(texts_all[:20], 1):
-                content_ru = text.get('text_ru') or text.get('text', '')
-                content_uk = text.get('text_uk', '')
-                content_en = text.get('text_en', '')
-                
-                training_materials += f"\n--- Документ {i} ---\n"
-                if content_ru:
-                    training_materials += f"[RU]: {content_ru}\n"
-                if content_uk:
-                    training_materials += f"[UK]: {content_uk}\n"
-                if content_en:
-                    training_materials += f"[EN]: {content_en}\n"
+                content = text.get('text', '')
+                if content:
+                    training_materials += f"\n--- Документ {i} ---\n{content}\n"
         
         if audios_all:
             training_materials += "\n=== АУДИО МАТЕРИАЛЫ (расшифровки) ===\n"
             for i, audio in enumerate(audios_all[:10], 1):
-                content_ru = audio.get('transcription_ru') or audio.get('transcription', '')
-                content_uk = audio.get('transcription_uk', '')
-                content_en = audio.get('transcription_en', '')
-                
-                training_materials += f"\n--- Аудио {i} ---\n"
-                if content_ru:
-                    training_materials += f"[RU]: {content_ru}\n"
-                if content_uk:
-                    training_materials += f"[UK]: {content_uk}\n"
-                if content_en:
-                    training_materials += f"[EN]: {content_en}\n"
+                content = audio.get('transcription', '')
+                if content:
+                    training_materials += f"\n--- Аудио {i} ---\n{content}\n"
         
         if videos_all:
             training_materials += "\n=== ВИДЕО МАТЕРИАЛЫ (расшифровки) ===\n"
             for i, video in enumerate(videos_all[:10], 1):
-                content_ru = video.get('transcription_ru') or video.get('transcription', '')
-                content_uk = video.get('transcription_uk', '')
-                content_en = video.get('transcription_en', '')
-                
-                training_materials += f"\n--- Видео {i} ---\n"
-                if content_ru:
-                    training_materials += f"[RU]: {content_ru}\n"
-                if content_uk:
-                    training_materials += f"[UK]: {content_uk}\n"
-                if content_en:
-                    training_materials += f"[EN]: {content_en}\n"
+                content = video.get('transcription', '')
+                if content:
+                    training_materials += f"\n--- Видео {i} ---\n{content}\n"
     
     lang_instruction = {
         'ru': "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ",
@@ -217,12 +204,12 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 
 ПРИОРИТЕТ 2 - БАЗА ЗНАНИЙ (FAQ) И ПРАВИЛА:
 {faq_text}
-Если ответ есть в FAQ - отвечай на его основе с confidence 85-90
+Если ответа НЕТ в последних 5 сообщениях, но есть в FAQ - отвечай на его основе с confidence 85-90
 
 ПРИОРИТЕТ 3 - ОБУЧАЮЩИЕ МАТЕРИАЛЫ:
 {training_materials}
-Если ответ есть в обучающих материалах - отвечай на их основе с confidence 85-90
-ИСПОЛЬЗУЙ версию материала на языке вопроса ({question_lang})
+Если ответа НЕТ ни в последних 5 сообщениях, ни в FAQ, но есть в обучающих материалах - отвечай на их основе с confidence 85-90
+Материалы уже на языке вопроса ({question_lang})
 
 ПРИОРИТЕТ 4 - ЭСКАЛАЦИЯ:
 Если ответа НЕТ ни в одном из источников выше - ЭСКАЛИРУЙ (escalate: true, confidence < 70)
@@ -237,15 +224,14 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 {question}
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
-1. СТРОГО следуй приоритету источников (5 сообщений → FAQ → Обучающие → Эскалация)
-2. Отвечай на ЯЗЫКЕ ВОПРОСА ({question_lang}), а НЕ на языке профиля пользователя
-3. Используй материалы на языке вопроса - выбирай [RU], [UK] или [EN] версию
-4. Простые эмоции (ок, супер, класс, добре, ok, good) - отвечай с confidence 95+
-5. Общие вопросы (привет, как дела) можешь отвечать на любом языке
-6. ЛЮБАЯ СТРАНА ПОДХОДИТ для работы
-7. Ответ КРАТКИЙ (максимум 200 слов)
-8. НЕ ИСПОЛЬЗУЙ MARKDOWN (без *, _, **)
-9. Стиль менеджера Valencia (дружелюбный, с эмодзи)
+1. СТРОГО следуй приоритету: 5 сообщений → FAQ → Обучающие → Эскалация
+2. Отвечай на ЯЗЫКЕ ВОПРОСА ({question_lang})
+3. Обучающие материалы уже на нужном языке
+4. Простые эмоции (ок, супер, класс, добре, ok, good) - confidence 95+
+5. ЛЮБАЯ СТРАНА ПОДХОДИТ для работы
+6. Ответ КРАТКИЙ (максимум 200 слов)
+7. НЕ ИСПОЛЬЗУЙ MARKDOWN (без *, _, **)
+8. Стиль менеджера Valencia (дружелюбный, с эмодзи)
 """
     
     return context_prompt
@@ -620,7 +606,7 @@ async def is_contextual_question(question, history):
     
     return None
 
-async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_groups=False):
+async def get_ai_response_with_retry(user_id, question, max_retries=3, is_in_groups=False):
     from utils.language_detector import detect_language
     
     logger.info(f"Starting AI request for user {user_id}")
@@ -652,28 +638,42 @@ async def get_ai_response_with_retry(user_id, question, max_retries=2, is_in_gro
         try:
             logger.info(f"AI attempt {attempt + 1}/{max_retries} for user {user_id}")
             response = await get_ai_response(user_id, question, is_in_groups)
-            if response['confidence'] > 0 or response['escalate']:
+            
+            if response['escalate']:
+                logger.info(f"AI escalated for user {user_id}")
+                return response
+            
+            if response['confidence'] > 0 and response.get('answer'):
                 logger.info(f"AI response successful for user {user_id}")
                 return response
-            logger.warning(f"AI returned 0 confidence for user {user_id}")
+            
+            logger.warning(f"AI returned empty/invalid response for user {user_id}, attempt {attempt + 1}")
+            
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+                
         except asyncio.TimeoutError:
-            logger.error(f"AI timeout for user {user_id}")
-            if attempt == max_retries - 1:
+            logger.error(f"AI timeout for user {user_id}, attempt {attempt + 1}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
+            else:
                 return {
                     'answer': '',
                     'confidence': 0,
                     'escalate': True
                 }
         except Exception as e:
-            logger.error(f"AI error for user {user_id}: {e}")
-            if attempt == max_retries - 1:
+            logger.error(f"AI error for user {user_id}, attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
+            else:
                 return {
                     'answer': '',
                     'confidence': 0,
                     'escalate': True
                 }
-            await asyncio.sleep(2)
     
+    logger.warning(f"All AI attempts failed for user {user_id}, escalating")
     return {
         'answer': '',
         'confidence': 0,
@@ -703,16 +703,17 @@ async def get_ai_response(user_id, question, is_in_groups=False):
         response = await asyncio.wait_for(
             asyncio.to_thread(
                 client.chat.completions.create,
-                model="",
+                model="gpt-4",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": context_prompt}
                 ]
             ),
-            timeout=60.0
+            timeout=45.0
         )
         
         if not response or not hasattr(response, 'choices') or not response.choices:
+            logger.warning(f"Empty AI response for user {user_id}")
             return {
                 'answer': '',
                 'confidence': 0,
@@ -722,8 +723,8 @@ async def get_ai_response(user_id, question, is_in_groups=False):
         content = response.choices[0].message.content
         content = content.strip() if hasattr(content, 'strip') else str(content).strip()
         
-        if not content or is_g4f_error(content):
-            logger.warning(f"g4f error in response content for user {user_id}: {content[:100]}")
+        if is_g4f_error(content):
+            logger.warning(f"g4f error detected for user {user_id}: {content[:100]}")
             return {
                 'answer': '',
                 'confidence': 0,
@@ -740,38 +741,32 @@ async def get_ai_response(user_id, question, is_in_groups=False):
         try:
             result = json.loads(content)
         except json.JSONDecodeError:
-            simple_responses = ['привет', 'здравствуй', 'хорошо', 'спасибо', 'ок', 'понятно', 
-                              'супер', 'класс', 'круто', 'отлично', 'добре', 'ясно']
-            q_lower = question.lower().strip()
-            
-            confidence = 90 if any(greeting in q_lower for greeting in simple_responses) else 70
+            logger.info(f"Non-JSON response for user {user_id}, using as plain text")
             
             if len(content) > 4000:
-                logger.warning(f"AI response too long for user {user_id}, truncating")
                 content = content[:3800] + "\n\n(продолжение в следующем сообщении...)"
             
             return {
                 'answer': content,
-                'confidence': confidence,
-                'escalate': confidence < AI_CONFIDENCE_THRESHOLD
+                'confidence': 75,
+                'escalate': False
             }
         
         if not isinstance(result, dict):
             answer_text = str(result)
             if len(answer_text) > 4000:
-                logger.warning(f"AI response too long for user {user_id}, truncating")
                 answer_text = answer_text[:3800] + "\n\n(продолжение в следующем сообщении...)"
             
             return {
                 'answer': answer_text,
-                'confidence': 70,
+                'confidence': 75,
                 'escalate': False
             }
         
         if 'answer' not in result:
             result['answer'] = content
         if 'confidence' not in result:
-            result['confidence'] = 50
+            result['confidence'] = 70
         if 'escalate' not in result:
             result['escalate'] = result['confidence'] < AI_CONFIDENCE_THRESHOLD
         
@@ -784,7 +779,6 @@ async def get_ai_response(user_id, question, is_in_groups=False):
             }
         
         if len(str(result.get('answer', ''))) > 4000:
-            logger.warning(f"AI response too long for user {user_id}, truncating")
             result['answer'] = str(result['answer'])[:3800] + "\n\n(продолжение в следующем сообщении...)"
         
         result['answer'] = str(result['answer']).replace('**', '').replace('__', '').replace('*', '').replace('_', '')

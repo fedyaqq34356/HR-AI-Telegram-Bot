@@ -1,3 +1,4 @@
+# utils/translator.py
 import asyncio
 import logging
 from g4f.client import Client
@@ -15,7 +16,7 @@ client = Client(
     provider=RetryProvider(all_providers, shuffle=True)
 )
 
-async def _translate(text, target_lang):
+async def _translate_with_retry(text, target_lang, max_retries=3):
     if not text or len(text.strip()) < 3:
         return text
 
@@ -34,49 +35,63 @@ async def _translate(text, target_lang):
         f"Text to translate:\n{text}"
     )
 
-    try:
-        response = await asyncio.wait_for(
-            asyncio.to_thread(
-                client.chat.completions.create,
-                model="",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            ),
-            timeout=720.0
-        )
+    for attempt in range(max_retries):
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.chat.completions.create,
+                    model="",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                ),
+                timeout=120.0
+            )
 
-        if not response or not hasattr(response, 'choices') or not response.choices:
-            logger.warning(f"Translation failed for lang={target_lang}")
+            if not response or not hasattr(response, 'choices') or not response.choices:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 * (attempt + 1))
+                    continue
+                logger.warning(f"Translation failed for lang={target_lang} after {max_retries} attempts")
+                return None
+
+            translated = response.choices[0].message.content.strip()
+
+            if translated.startswith('```'):
+                translated = translated.split('```')[1].strip()
+
+            logger.info(f"Translated to {target_lang}: {len(translated)} chars (attempt {attempt + 1})")
+            return translated
+
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                logger.warning(f"Translation timeout for lang={target_lang}, attempt {attempt + 1}/{max_retries}")
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            logger.error(f"Translation timeout for lang={target_lang} after {max_retries} attempts")
+            return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Translation error for lang={target_lang}, attempt {attempt + 1}/{max_retries}: {e}")
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            logger.error(f"Translation error for lang={target_lang} after {max_retries} attempts: {e}")
             return None
 
-        translated = response.choices[0].message.content.strip()
-
-        if translated.startswith('```'):
-            translated = translated.split('```')[1].strip()
-
-        logger.info(f"Translated to {target_lang}: {len(translated)} chars")
-        return translated
-
-    except asyncio.TimeoutError:
-        logger.error(f"Translation timeout for lang={target_lang}")
-        return None
-    except Exception as e:
-        logger.error(f"Translation error for lang={target_lang}: {e}")
-        return None
+    return None
 
 async def translate_ru_to_uk_en(text):
-    results = await asyncio.gather(
-        _translate(text, 'uk'),
-        _translate(text, 'en'),
+    uk_result, en_result = await asyncio.gather(
+        _translate_with_retry(text, 'uk'),
+        _translate_with_retry(text, 'en'),
         return_exceptions=True
     )
 
-    uk_result = results[0] if not isinstance(results[0], Exception) else None
-    en_result = results[1] if not isinstance(results[1], Exception) else None
+    uk_translation = uk_result if not isinstance(uk_result, Exception) else None
+    en_translation = en_result if not isinstance(en_result, Exception) else None
 
     return {
         'ru': text,
-        'uk': uk_result,
-        'en': en_result
+        'uk': uk_translation,
+        'en': en_translation
     }

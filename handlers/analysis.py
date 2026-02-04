@@ -87,21 +87,43 @@ async def process_analysis_task(message: Message, bot):
         for msg in messages:
             if msg['message_type'] == 'text':
                 text_count += 1
-                filename = f"text_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                filepath = os.path.join(ANALYSIS_TEXT_DIR, filename)
+                
+                logger.info(f"📝 Translating text {msg['message_id']}: RU → UK, EN")
+                translations = await translate_ru_to_uk_en(msg['content'])
+                logger.info(f"✅ Translation complete for text {msg['message_id']}")
 
-                with open(filepath, 'w', encoding='utf-8') as f:
+                filename_base = f"text_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                
+                filepath_ru = os.path.join(ANALYSIS_TEXT_DIR, f"{filename_base}_ru.txt")
+                with open(filepath_ru, 'w', encoding='utf-8') as f:
                     f.write(f"Message ID: {msg['message_id']}\n")
                     f.write(f"Date: {msg['timestamp']}\n")
-                    f.write(f"From: {msg['username']}\n\n")
+                    f.write(f"From: {msg['username']}\n")
+                    f.write(f"Language: Russian\n\n")
                     f.write(msg['content'])
 
-                translations = await translate_ru_to_uk_en(msg['content'])
+                if translations['uk']:
+                    filepath_uk = os.path.join(ANALYSIS_TEXT_DIR, f"{filename_base}_uk.txt")
+                    with open(filepath_uk, 'w', encoding='utf-8') as f:
+                        f.write(f"Message ID: {msg['message_id']}\n")
+                        f.write(f"Date: {msg['timestamp']}\n")
+                        f.write(f"From: {msg['username']}\n")
+                        f.write(f"Language: Ukrainian\n\n")
+                        f.write(translations['uk'])
+
+                if translations['en']:
+                    filepath_en = os.path.join(ANALYSIS_TEXT_DIR, f"{filename_base}_en.txt")
+                    with open(filepath_en, 'w', encoding='utf-8') as f:
+                        f.write(f"Message ID: {msg['message_id']}\n")
+                        f.write(f"Date: {msg['timestamp']}\n")
+                        f.write(f"From: {msg['username']}\n")
+                        f.write(f"Language: English\n\n")
+                        f.write(translations['en'])
 
                 await save_analysis_text(
                     msg['message_id'],
                     msg['content'],
-                    filename,
+                    filename_base,
                     text_ru=msg['content'],
                     text_uk=translations['uk'],
                     text_en=translations['en']
@@ -129,21 +151,42 @@ async def process_analysis_task(message: Message, bot):
                     await bot.download_file(file.file_path, temp_filename)
                     transcription = await transcribe_audio(temp_filename)
 
-                    filename = f"audio_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                    filepath = os.path.join(ANALYSIS_AUDIO_DIR, filename)
+                    logger.info(f"🎤 Translating audio {msg['message_id']}: RU → UK, EN")
+                    translations = await translate_ru_to_uk_en(transcription)
+                    logger.info(f"✅ Translation complete for audio {msg['message_id']}")
 
-                    with open(filepath, 'w', encoding='utf-8') as f:
+                    filename_base = f"audio_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+                    filepath_ru = os.path.join(ANALYSIS_AUDIO_DIR, f"{filename_base}_ru.txt")
+                    with open(filepath_ru, 'w', encoding='utf-8') as f:
                         f.write(f"Message ID: {msg['message_id']}\n")
                         f.write(f"Date: {msg['timestamp']}\n")
-                        f.write(f"From: {msg['username']}\n\n")
+                        f.write(f"From: {msg['username']}\n")
+                        f.write(f"Language: Russian\n\n")
                         f.write(transcription)
 
-                    translations = await translate_ru_to_uk_en(transcription)
+                    if translations['uk']:
+                        filepath_uk = os.path.join(ANALYSIS_AUDIO_DIR, f"{filename_base}_uk.txt")
+                        with open(filepath_uk, 'w', encoding='utf-8') as f:
+                            f.write(f"Message ID: {msg['message_id']}\n")
+                            f.write(f"Date: {msg['timestamp']}\n")
+                            f.write(f"From: {msg['username']}\n")
+                            f.write(f"Language: Ukrainian\n\n")
+                            f.write(translations['uk'])
+
+                    if translations['en']:
+                        filepath_en = os.path.join(ANALYSIS_AUDIO_DIR, f"{filename_base}_en.txt")
+                        with open(filepath_en, 'w', encoding='utf-8') as f:
+                            f.write(f"Message ID: {msg['message_id']}\n")
+                            f.write(f"Date: {msg['timestamp']}\n")
+                            f.write(f"From: {msg['username']}\n")
+                            f.write(f"Language: English\n\n")
+                            f.write(translations['en'])
 
                     await save_analysis_audio(
                         msg['message_id'],
                         transcription,
-                        filename,
+                        filename_base,
                         transcription_ru=transcription,
                         transcription_uk=translations['uk'],
                         transcription_en=translations['en']
@@ -178,21 +221,42 @@ async def process_analysis_task(message: Message, bot):
                     await bot.download_file(file.file_path, temp_filename)
                     transcription = await transcribe_audio(temp_filename)
 
-                    filename = f"video_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                    filepath = os.path.join(ANALYSIS_VIDEO_DIR, filename)
+                    logger.info(f"🎥 Translating video {msg['message_id']}: RU → UK, EN")
+                    translations = await translate_ru_to_uk_en(transcription)
+                    logger.info(f"✅ Translation complete for video {msg['message_id']}")
 
-                    with open(filepath, 'w', encoding='utf-8') as f:
+                    filename_base = f"video_{msg['message_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+                    filepath_ru = os.path.join(ANALYSIS_VIDEO_DIR, f"{filename_base}_ru.txt")
+                    with open(filepath_ru, 'w', encoding='utf-8') as f:
                         f.write(f"Message ID: {msg['message_id']}\n")
                         f.write(f"Date: {msg['timestamp']}\n")
-                        f.write(f"From: {msg['username']}\n\n")
+                        f.write(f"From: {msg['username']}\n")
+                        f.write(f"Language: Russian\n\n")
                         f.write(transcription)
 
-                    translations = await translate_ru_to_uk_en(transcription)
+                    if translations['uk']:
+                        filepath_uk = os.path.join(ANALYSIS_VIDEO_DIR, f"{filename_base}_uk.txt")
+                        with open(filepath_uk, 'w', encoding='utf-8') as f:
+                            f.write(f"Message ID: {msg['message_id']}\n")
+                            f.write(f"Date: {msg['timestamp']}\n")
+                            f.write(f"From: {msg['username']}\n")
+                            f.write(f"Language: Ukrainian\n\n")
+                            f.write(translations['uk'])
+
+                    if translations['en']:
+                        filepath_en = os.path.join(ANALYSIS_VIDEO_DIR, f"{filename_base}_en.txt")
+                        with open(filepath_en, 'w', encoding='utf-8') as f:
+                            f.write(f"Message ID: {msg['message_id']}\n")
+                            f.write(f"Date: {msg['timestamp']}\n")
+                            f.write(f"From: {msg['username']}\n")
+                            f.write(f"Language: English\n\n")
+                            f.write(translations['en'])
 
                     await save_analysis_video(
                         msg['message_id'],
                         transcription,
-                        filename,
+                        filename_base,
                         transcription_ru=transcription,
                         transcription_uk=translations['uk'],
                         transcription_en=translations['en']
