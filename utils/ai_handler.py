@@ -397,7 +397,10 @@ async def check_dislike_calculation(question, user_lang='ru'):
     # Ключевые слова для определения вопроса о расчете
     calc_keywords = [
         'порахуй', 'посчитай', 'подсчитай', 'calculate', 'мій коефіцієнт', 'мой коэффициент',
-        'my ratio', 'який коефіцієнт', 'какой коэффициент', 'what ratio', 'what is my ratio'
+        'my ratio', 'який коефіцієнт', 'какой коэффициент', 'what ratio', 'what is my ratio',
+        'допомогти вирахувати', 'помочь рассчитать', 'help calculate', 'can you calculate',
+        'можеш порахувати', 'можешь посчитать', 'можеш допомогти', 'можешь помочь',
+        'вирахувати', 'рассчитать', 'calculate for me', 'допомогти', 'помочь'
     ]
     
     is_calc_question = any(kw in q_lower for kw in calc_keywords)
@@ -407,9 +410,11 @@ async def check_dislike_calculation(question, user_lang='ru'):
     has_dislikes = any(kw in q_lower for kw in ['дизлайк', 'dislike', 'дизлайків'])
     has_likes = any(kw in q_lower for kw in ['лайк', 'like', 'лайків'])
     
-    if (is_calc_question or (has_numbers and has_dislikes and has_likes)):
+    # Если это вопрос о расчете
+    if is_calc_question or (has_dislikes and has_likes):
         dislikes, likes = extract_dislike_numbers(question)
         
+        # Если числа найдены - считаем
         if dislikes is not None and likes is not None:
             ratio = calculate_dislike_ratio(dislikes, likes)
             
@@ -457,6 +462,40 @@ Status: {status}
             }
             
             return answer_texts.get(user_lang, answer_texts['ru'])
+        
+        # Если вопрос о расчете есть, но чисел нет - просим их дать
+        elif is_calc_question:
+            prompt_texts = {
+                'ru': '''Конечно помогу посчитать! 😊
+
+Напиши мне сколько у тебя:
+• Дизлайков
+• Лайков
+
+Например: "30 дизлайков и 200 лайков"
+
+И я сразу посчитаю твой коэффициент и скажу в норме ли он! 📊''',
+                'uk': '''Звичайно допоможу порахувати! 😊
+
+Напиши мені скільки у тебе:
+• Дизлайків
+• Лайків
+
+Наприклад: "30 дизлайків і 200 лайків"
+
+І я одразу порахую твій коефіцієнт і скажу чи в нормі він! 📊''',
+                'en': '''Of course I'll help you calculate! 😊
+
+Tell me how many you have:
+• Dislikes
+• Likes
+
+For example: "30 dislikes and 200 likes"
+
+And I'll calculate your ratio and tell you if it's okay! 📊'''
+            }
+            
+            return prompt_texts.get(user_lang, prompt_texts['ru'])
     
     return None
 
