@@ -505,7 +505,8 @@ KNOWLEDGE_KEYWORDS = {
     'hunting': ['охота', 'hunting', 'хантинг', 'hunt', 'полювання', 'start hunting', 'начать охоту', 'почати полювання'],
     'multibeam': ['мультибим', 'multibeam', 'multi beam', 'multi-beam', 'multibim', 'мультібім', 'press unit', 'спот', 'spot'],
     'profile': ['профиль', 'profile', 'профіль', 'аватар', 'avatar', 'обложка', 'cover', 'теги', 'tags', 'настройка профиля', 'налаштування профілю', 'редактир', 'edit profile'],
-    'posts': ['пост', 'post', 'публикация', 'публікація', 'лента', 'feed', 'posting', 'как публиковать', 'як публікувати', 'how to post'],
+    'how_to_post': ['как постить', 'як постити', 'how to post', 'как опубликовать', 'як опублікувати', 'как добавить пост', 'як додати пост', 'как запостить', 'як запостити', 'постить фото', 'постити фото', 'post photo', 'как делать пост', 'як робити пост', 'how to make post', 'как сделать пост', 'як зробити пост'],
+    'posts': ['пост', 'post', 'публикация', 'публікація', 'лента', 'feed', 'posting', 'сколько постов', 'скільки постів', 'how many posts', 'количество постов', 'кількість постів'],
     
     'live_stream_start': ['запустить эфир', 'запустити ефір', 'start stream', 'начать эфир', 'почати ефір', 'как запустить', 'як запустити', 'start live', 'launch stream', 'open stream'],
     'live_stream_posture': ['как сидеть', 'як сидіти', 'how to sit', 'правильно сидеть', 'правильно сидіти', 'posture', 'поза', 'сидіти в ефірі', 'сидеть в эфире'],
@@ -531,7 +532,9 @@ def find_relevant_knowledge(question, user_lang='ru'):
     relevant = []
     matched_categories = set()
     
+    # ПРИОРИТЕТ 1: Самые специфичные категории (проверяем первыми)
     specific_checks = [
+        ('how_to_post', KNOWLEDGE_KEYWORDS['how_to_post']),
         ('live_stream_start', KNOWLEDGE_KEYWORDS['live_stream_start']),
         ('live_stream_posture', KNOWLEDGE_KEYWORDS['live_stream_posture']),
         ('dislikes_delete', KNOWLEDGE_KEYWORDS['dislikes_delete']),
@@ -553,6 +556,7 @@ def find_relevant_knowledge(question, user_lang='ru'):
     if relevant:
         return relevant
     
+    # ПРИОРИТЕТ 2: Остальные категории
     for category, keywords in KNOWLEDGE_KEYWORDS.items():
         if category in matched_categories:
             continue
@@ -801,12 +805,24 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     lang_names = {'ru': 'РУССКОМ', 'uk': 'УКРАЇНСЬКОЮ', 'en': 'ENGLISH'}
     lang_name = lang_names.get(user_lang, 'РУССКОМ')
     
+    # Дополнительные напоминания о языке
+    lang_reminders = {
+        'ru': '⚠️ ЯЗЫК ОТВЕТА: ТОЛЬКО РУССКИЙ! Никаких других языков!',
+        'uk': '⚠️ МОВА ВІДПОВІДІ: ТІЛЬКИ УКРАЇНСЬКА! Жодних інших мов!',
+        'en': '⚠️ RESPONSE LANGUAGE: ONLY ENGLISH! No other languages!'
+    }
+    lang_reminder = lang_reminders.get(user_lang, lang_reminders['ru'])
+    
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
 СТАТУС УЧАСТИЯ: {group_status}
 
-🔴 ЯЗЫК ПОЛЬЗОВАТЕЛЯ: {lang_name}
-🔴 ТЫ ОБЯЗАН ОТВЕЧАТЬ ТОЛЬКО НА ЯЗЫКЕ {lang_name}!
+🔴🔴🔴 КРИТИЧЕСКИ ВАЖНО 🔴🔴🔴
+ЯЗЫК ПОЛЬЗОВАТЕЛЯ: {lang_name}
+{lang_reminder}
+ТЫ ОБЯЗАН ОТВЕЧАТЬ ТОЛЬКО НА ЯЗЫКЕ {lang_name}!
+ЕСЛИ ОТВЕТИШЬ НА ДРУГОМ ЯЗЫКЕ - ЭТО ОШИБКА!
+🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴
 
 КАК ИСКАТЬ ОТВЕТ:
 
@@ -834,7 +850,9 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 {question}
 
 ПРАВИЛА ОТВЕТА:
-- Отвечай ТОЛЬКО на языке {lang_name}
+- 🔴 САМОЕ ВАЖНОЕ: Отвечай ТОЛЬКО на языке {lang_name}!
+- 🔴 НЕ СМЕШИВАЙ языки! Весь ответ должен быть на {lang_name}!
+- 🔴 Даже если вопрос на другом языке - отвечай ТОЛЬКО на {lang_name}!
 - Простые эмоции (ок, супер, класс, добре) - confidence 95+, БЕЗ эскалации
 - ЛЮБАЯ СТРАНА ПОДХОДИТ для работы
 - Ответ КРАТКИЙ (до 200 слов)
@@ -845,10 +863,12 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 
 ФОРМАТ ОТВЕТА JSON:
 {{
-  "answer": "твой дружелюбный ответ",
+  "answer": "твой дружелюбный ответ НА ЯЗЫКЕ {lang_name}",
   "confidence": 0-100,
   "escalate": true/false
 }}
+
+🔴 ПОСЛЕДНЕЕ НАПОМИНАНИЕ: Ответ должен быть ПОЛНОСТЬЮ на языке {lang_name}!
 """
     
     return context_prompt
@@ -1307,6 +1327,13 @@ async def get_ai_response_with_retry(user_id, question, max_retries=3, is_in_gro
 async def get_ai_response(user_id, question, is_in_groups=False):
     user = await get_user(user_id)
     user_lang = user['language'] if user and user['language'] else 'ru'
+    
+    # Дополнительная проверка: если язык не установлен, пытаемся определить из вопроса
+    if not user_lang or user_lang not in ['ru', 'uk', 'en']:
+        from utils.language_detector import detect_language
+        detected_lang = detect_language(question)
+        user_lang = detected_lang if detected_lang in ['ru', 'uk', 'en'] else 'ru'
+        logger.info(f"Language fallback for user {user_id}: detected {user_lang} from question")
     
     if await check_forbidden_topics(question):
         logger.info(f"Forbidden topic for user {user_id}")
