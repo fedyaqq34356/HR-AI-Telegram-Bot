@@ -92,6 +92,15 @@ HALO_TRAINING_KNOWLEDGE = {
 - Напиши: "Hi, call me"
 - Большинство заходят, смотрят и уходят - важно написать первой''',
         
+        # ПРЕМИУМ ЭФИР
+        'premium_stream': '''Премиум эфир - это платная комната:
+- Мужчины платят за вход в твой эфир
+- Ты устанавливаешь цену за вход (например, 99 монет)
+- Пока мужчина в эфире - он каждую минуту тебе платит
+- Премиум эфир = приватный формат для группы мужчин
+- Можно показывать больше чем в обычном эфире (но в рамках правил)
+- Хороший способ заработать больше 💰''',
+        
         # ПРАВИЛА ЭФИРОВ
         'live_stream_rules': '''Правила прямых эфиров:
 ЗАПРЕЩЕНО:
@@ -220,6 +229,14 @@ HALO_TRAINING_KNOWLEDGE = {
 7. Можеш обрати маски
 8. Натисни start''',
         
+        'premium_stream': '''Преміум ефір - це платна кімната:
+- Чоловіки платять за вхід у твій ефір
+- Ти встановлюєш ціну за вхід (наприклад, 99 монет)
+- Поки чоловік в ефірі - він кожну хвилину тобі платить
+- Преміум ефір = приватний формат для групи чоловіків
+- Можна показувати більше ніж у звичайному ефірі (але в рамках правил)
+- Хороший спосіб заробити більше 💰''',
+        
         'dislikes_info': '''Два коефіцієнти дизлайків:
 1️⃣ Коефіцієнт у профілі (бачиш у профілі):
 - Завжди має бути НИЖЧЕ 0.18
@@ -308,6 +325,14 @@ HALO_TRAINING_KNOWLEDGE = {
 7. Can choose masks
 8. Press start''',
         
+        'premium_stream': '''Premium stream is a paid room:
+- Men pay to enter your stream
+- You set the entrance price (e.g., 99 coins)
+- While a man is in the stream - he pays you every minute
+- Premium stream = private format for a group of men
+- Can show more than in regular stream (but within rules)
+- Good way to earn more 💰''',
+        
         'dislikes_info': '''Two dislike ratios:
 1️⃣ Profile ratio (you can see):
 - Always must be BELOW 0.18
@@ -373,8 +398,8 @@ def extract_dislike_numbers(text):
     
     # Паттерны для поиска чисел
     patterns = [
-        r'(\d+)\s*(?:дизлайк|dislike|дизлайків).*?(\d+)\s*(?:лайк|like|лайків)',
-        r'(\d+)\s*(?:лайк|like|лайків).*?(\d+)\s*(?:дизлайк|dislike|дизлайків)',
+        r'(\d+)\s*(?:дизлайк|dislike|дизлайків|диз|дизов|дизів).*?(\d+)\s*(?:лайк|like|лайків|лайков)',
+        r'(\d+)\s*(?:лайк|like|лайків|лайков).*?(\d+)\s*(?:дизлайк|dislike|дизлайків|диз|дизов|дизів)',
     ]
     
     for pattern in patterns:
@@ -382,7 +407,7 @@ def extract_dislike_numbers(text):
         if match:
             num1, num2 = int(match.group(1)), int(match.group(2))
             # Определяем какое число - дизлайки, какое - лайки
-            if 'дизлайк' in text_lower[:match.start(2)] or 'dislike' in text_lower[:match.start(2)]:
+            if 'дизлайк' in text_lower[:match.start(2)] or 'dislike' in text_lower[:match.start(2)] or 'диз' in text_lower[:match.start(2)]:
                 return num1, num2  # num1 - дизлайки, num2 - лайки
             else:
                 return num2, num1  # num2 - дизлайки, num1 - лайки
@@ -399,18 +424,19 @@ async def check_dislike_calculation(question, user_lang='ru'):
         'my ratio', 'який коефіцієнт', 'какой коэффициент', 'what ratio', 'what is my ratio',
         'допомогти вирахувати', 'помочь рассчитать', 'help calculate', 'can you calculate',
         'можеш порахувати', 'можешь посчитать', 'можеш допомогти', 'можешь помочь',
-        'вирахувати', 'рассчитать', 'calculate for me', 'допомогти', 'помочь'
+        'вирахувати', 'рассчитать', 'calculate for me', 'допомогти', 'помочь',
+        'это норма', 'це норма', 'is this normal', 'is it ok', 'це добре', 'это хорошо'
     ]
     
     is_calc_question = any(kw in q_lower for kw in calc_keywords)
     
     # Или просто упоминание дизлайков и лайков с числами
     has_numbers = bool(re.search(r'\d+', question))
-    has_dislikes = any(kw in q_lower for kw in ['дизлайк', 'dislike', 'дизлайків'])
-    has_likes = any(kw in q_lower for kw in ['лайк', 'like', 'лайків'])
+    has_dislikes = any(kw in q_lower for kw in ['дизлайк', 'dislike', 'дизлайків', 'диз', 'дизов', 'дизів'])
+    has_likes = any(kw in q_lower for kw in ['лайк', 'like', 'лайків', 'лайков', 'лайка'])
     
     # Если это вопрос о расчете
-    if is_calc_question or (has_dislikes and has_likes):
+    if is_calc_question or (has_dislikes and has_likes and has_numbers):
         dislikes, likes = extract_dislike_numbers(question)
         
         # Если числа найдены - считаем
@@ -510,9 +536,11 @@ KNOWLEDGE_KEYWORDS = {
     'live_stream_start': ['запустить эфир', 'запустити ефір', 'start stream', 'начать эфир', 'почати ефір', 'как запустить', 'як запустити', 'start live', 'launch stream', 'open stream'],
     'live_stream_posture': ['как сидеть', 'як сидіти', 'how to sit', 'правильно сидеть', 'правильно сидіти', 'posture', 'поза', 'сидіти в ефірі', 'сидеть в эфире'],
     
+    'premium_stream': ['премиум эфир', 'преміум ефір', 'premium stream', 'premium', 'преміум', 'премиум', 'платный эфир', 'платний ефір', 'paid stream', 'что такое премиум', 'що таке преміум'],
+    
     'live_stream': ['эфир', 'stream', 'ефір', 'прямой эфир', 'live', 'трансляция', 'прямий ефір', 'broadcast'],
     'rules': ['правила', 'rules', 'правила', 'запрещено', 'forbidden', 'заборонено', 'нельзя', 'можно', 'можна', 'what allowed', 'що дозволено'],
-    'dislikes': ['дизлайк', 'dislike', 'дизлайки', 'коэффициент', 'coefficient', 'коефіцієнт', 'ratio'],
+    'dislikes': ['дизлайк', 'dislike', 'дизлайки', 'коэффициент', 'coefficient', 'коефіцієнт', 'ratio', 'диз', 'дизов'],
     'dislikes_delete': ['видалити дизлайк', 'удалить дизлайк', 'delete dislike', 'убрать дизлайк', 'прибрати дизлайк', 'как удалить', 'як видалити', 'how to delete'],
     'auto_messages': ['автосообщ', 'auto message', 'автоповідомл', 'mass message', 'массовые', 'масові', 'рассылка', 'розсилка'],
     'tasks': ['задания', 'tasks', 'завдання', 'центр задач', 'task center', 'виконати завдання', 'выполнить задания'],
@@ -536,6 +564,7 @@ def find_relevant_knowledge(question, user_lang='ru'):
         ('how_to_post', KNOWLEDGE_KEYWORDS['how_to_post']),
         ('live_stream_start', KNOWLEDGE_KEYWORDS['live_stream_start']),
         ('live_stream_posture', KNOWLEDGE_KEYWORDS['live_stream_posture']),
+        ('premium_stream', KNOWLEDGE_KEYWORDS['premium_stream']),
         ('dislikes_delete', KNOWLEDGE_KEYWORDS['dislikes_delete']),
         ('after_registration', KNOWLEDGE_KEYWORDS['after_registration']),
     ]
@@ -737,7 +766,10 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     
     learning_text = "\n".join([f"Q: {l['question']}\nA: {l['answer']} (confidence: {l['confidence']})" for l in learning[:10]])
     
-    group_status = "ЕСТЬ В ГРУППАХ (можно отвечать на рабочие вопросы)" if is_in_groups else "НЕТ В ГРУППАХ (только регистрация)"
+    if is_in_groups:
+        group_status = "✅ ЕСТЬ В ГРУППАХ - можешь отвечать на ВСЕ рабочие вопросы"
+    else:
+        group_status = "❌ НЕТ В ГРУППАХ - отвечай ТОЛЬКО на вопросы о РЕГИСТРАЦИИ"
     
     last_messages = history[-5:] if len(history) >= 5 else history
     recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
@@ -750,56 +782,34 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     
     training_materials = ""
     
-    texts_all = await get_all_analysis_texts(lang=user_lang)
-    audios_all = await get_all_analysis_audios(lang=user_lang)
-    videos_all = await get_all_analysis_videos(lang=user_lang)
-    
-    relevant_texts = find_relevant_materials(question, texts_all, max_results=5)
-    relevant_audios = find_relevant_materials(question, audios_all, max_results=3)
-    relevant_videos = find_relevant_materials(question, videos_all, max_results=3)
-    
-    if relevant_texts or relevant_audios or relevant_videos:
-        training_materials = f"\n\n=== РЕЛЕВАНТНЫЕ ОБУЧАЮЩИЕ МАТЕРИАЛЫ ===\n"
-        training_materials += "⚠️ ЭТИ МАТЕРИАЛЫ СПЕЦИАЛЬНО ОТОБРАНЫ ПО ТВОЕМУ ВОПРОСУ - ИСПОЛЬЗУЙ ИХ!\n\n"
+    # ВАЖНО: Материалы можно использовать ТОЛЬКО если пользователь В ГРУППАХ
+    if is_in_groups:
+        texts_all = await get_all_analysis_texts(lang=user_lang)
+        audios_all = await get_all_analysis_audios(lang=user_lang)
+        videos_all = await get_all_analysis_videos(lang=user_lang)
         
-        if relevant_texts:
-            training_materials += "=== РЕЛЕВАНТНЫЕ ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
-            for i, (text, content) in enumerate(relevant_texts, 1):
-                training_materials += f"\n--- Документ {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:2000]}\n"
+        relevant_texts = find_relevant_materials(question, texts_all, max_results=5)
+        relevant_audios = find_relevant_materials(question, audios_all, max_results=3)
+        relevant_videos = find_relevant_materials(question, videos_all, max_results=3)
         
-        if relevant_audios:
-            training_materials += "\n=== РЕЛЕВАНТНЫЕ АУДИО МАТЕРИАЛЫ ===\n"
-            for i, (audio, content) in enumerate(relevant_audios, 1):
-                training_materials += f"\n--- Аудио {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
-        
-        if relevant_videos:
-            training_materials += "\n=== РЕЛЕВАНТНЫЕ ВИДЕО МАТЕРИАЛЫ ===\n"
-            for i, (video, content) in enumerate(relevant_videos, 1):
-                training_materials += f"\n--- Видео {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
-    else:
-        if texts_all or audios_all or videos_all:
-            training_materials = f"\n\n=== ОБЩИЕ ОБУЧАЮЩИЕ МАТЕРИАЛЫ ===\n"
+        if relevant_texts or relevant_audios or relevant_videos:
+            training_materials = f"\n\n=== РЕЛЕВАНТНЫЕ ОБУЧАЮЩИЕ МАТЕРИАЛЫ (доступны т.к. пользователь В ГРУППАХ) ===\n"
+            training_materials += "⚠️ ЭТИ МАТЕРИАЛЫ СПЕЦИАЛЬНО ОТОБРАНЫ ПО ТВОЕМУ ВОПРОСУ - ИСПОЛЬЗУЙ ИХ!\n\n"
             
-            if texts_all:
-                training_materials += "=== ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
-                for i, text in enumerate(texts_all[:5], 1):
-                    content = text.get('text', '')
-                    if content:
-                        training_materials += f"\n--- Документ {i} ---\n{content[:1000]}\n"
+            if relevant_texts:
+                training_materials += "=== РЕЛЕВАНТНЫЕ ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
+                for i, (text, content) in enumerate(relevant_texts, 1):
+                    training_materials += f"\n--- Документ {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:2000]}\n"
             
-            if audios_all:
-                training_materials += "\n=== АУДИО МАТЕРИАЛЫ ===\n"
-                for i, audio in enumerate(audios_all[:3], 1):
-                    content = audio.get('transcription', '')
-                    if content:
-                        training_materials += f"\n--- Аудио {i} ---\n{content[:800]}\n"
+            if relevant_audios:
+                training_materials += "\n=== РЕЛЕВАНТНЫЕ АУДИО МАТЕРИАЛЫ ===\n"
+                for i, (audio, content) in enumerate(relevant_audios, 1):
+                    training_materials += f"\n--- Аудио {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
             
-            if videos_all:
-                training_materials += "\n=== ВИДЕО МАТЕРИАЛЫ ===\n"
-                for i, video in enumerate(videos_all[:3], 1):
-                    content = video.get('transcription', '')
-                    if content:
-                        training_materials += f"\n--- Видео {i} ---\n{content[:800]}\n"
+            if relevant_videos:
+                training_materials += "\n=== РЕЛЕВАНТНЫЕ ВИДЕО МАТЕРИАЛЫ ===\n"
+                for i, (video, content) in enumerate(relevant_videos, 1):
+                    training_materials += f"\n--- Видео {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
     
     lang_names = {'ru': 'РУССКОМ', 'uk': 'УКРАЇНСЬКОЮ', 'en': 'ENGLISH'}
     lang_name = lang_names.get(user_lang, 'РУССКОМ')
@@ -812,9 +822,31 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     }
     lang_reminder = lang_reminders.get(user_lang, lang_reminders['ru'])
     
+    not_in_groups_warning = ""
+    if not is_in_groups:
+        not_in_groups_warning = f"""
+🔴🔴🔴 КРИТИЧЕСКИ ВАЖНО 🔴🔴🔴
+ПОЛЬЗОВАТЕЛЬ НЕ В ГРУППАХ!
+ТЫ МОЖЕШЬ ОТВЕЧАТЬ ТОЛЬКО НА ВОПРОСЫ О РЕГИСТРАЦИИ!
+НЕ ОТВЕЧАЙ на вопросы про:
+- эфиры, стримы, трансляции
+- как работать
+- заработок
+- правила работы
+- дизлайки, охоту, мультибимы
+- посты, профиль (кроме создания при регистрации)
+
+Если спрашивают о работе - скажи:
+"Ты пока что не прошла регистрацию, как только ты закончишь, у тебя будет открыт доступ к обучению 😊"
+
+ЭСКАЛИРУЙ (escalate: true) на любые рабочие вопросы!
+🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴
+"""
+    
     context_prompt = f"""
 СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
 СТАТУС УЧАСТИЯ: {group_status}
+{not_in_groups_warning}
 
 🔴🔴🔴 КРИТИЧЕСКИ ВАЖНО 🔴🔴🔴
 ЯЗЫК ПОЛЬЗОВАТЕЛЯ: {lang_name}
@@ -834,7 +866,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
 3. Если нет в знаниях, смотри FAQ И ПРАВИЛА:
 {faq_text}
 
-4. Если нет в FAQ, смотри ОБУЧАЮЩИЕ МАТЕРИАЛЫ:
+4. Если нет в FAQ, смотри ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ТОЛЬКО если пользователь В ГРУППАХ):
 {training_materials}
 
 5. Если нигде нет ответа - эскалируй (escalate: true, confidence < 70)
