@@ -1386,6 +1386,38 @@ async def get_ai_response_with_retry(user_id, question, max_retries=3, is_in_gro
     user = await get_user(user_id)
     user_lang = user['language'] if user and user['language'] else 'ru'
     
+    # 🔴 НОВАЯ ПРОВЕРКА - правильные отступы!
+    if not is_in_groups:
+        q_lower = question.lower()
+        
+        work_categories = [
+            'hunting', 'multibeam', 'profile', 'posts', 'how_to_post',
+            'live_stream', 'live_stream_start', 'live_stream_posture',
+            'premium_stream', 'premium_stream_start', 'rules',
+            'dislikes', 'dislikes_delete', 'auto_messages', 'tasks',
+            'earnings', 'translator', 'contract', 'social_media'
+        ]
+        
+        is_work_question = False
+        matched_work_category = None
+        
+        for category in work_categories:
+            if category in KNOWLEDGE_KEYWORDS:
+                keywords = KNOWLEDGE_KEYWORDS[category]
+                if any(keyword in q_lower for keyword in keywords):
+                    is_work_question = True
+                    matched_work_category = category
+                    break
+        
+        if is_work_question:
+            logger.warning(f"Work question from non-member detected: {matched_work_category}")
+            return {
+                'answer': get_not_in_groups_message(user_lang),
+                'confidence': 100,
+                'escalate': False
+            }
+    
+    # Дальше обычная логика
     dislike_calc_answer = await check_dislike_calculation(question, user_lang)
     if dislike_calc_answer:
         logger.info(f"Dislike calculation for user {user_id}")
