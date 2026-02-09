@@ -201,6 +201,22 @@ HALO_TRAINING_KNOWLEDGE = {
         
         # АГЕНТСТВО
         'agency_name': 'В разделе Агентство выбирай: Tosagency-Ukraine 😊',
+        
+        # ЗАРАБОТКИ - ДОСТУПНО ВСЕМ!
+        'earnings_info': '''💰 Заработок в Halo:
+📞 1 минута общения = 1$
+💳 Комиссия агентства — 20%
+👉 Чистый доход: 0.8$ за минуту
+
+Примеры:
+- 5 минут = 4$ чистыми
+- 10 минут = 8$ чистыми
+- 30 минут = 24$ чистыми
+- 1 час = 48$ чистыми
+
+💵 От 50$ в день при активной работе
+🌍 Мужчины из США, Европы, ОАЭ, арабских стран
+💬 Многие приходят за общением, а не за 🔞''',
     },
     
     'uk': {
@@ -241,7 +257,6 @@ HALO_TRAINING_KNOWLEDGE = {
 7. Можеш обрати маски
 8. Натисни start''',
         
-        # ПРЕМИУМ ЭФИР - ИСПРАВЛЕНО!
         'premium_stream': '''Преміум ефір - це платна кімната:
 - Чоловіки платять ЗА ВХІД у твій ефір (ОДНОРАЗОВА оплата)
 - Ти встановлюєш ціну за вхід (наприклад, 99 монет)
@@ -251,7 +266,6 @@ HALO_TRAINING_KNOWLEDGE = {
 - Можна показувати більше ніж у звичайному ефірі (але в рамках правил)
 - Хороший спосіб заробити більше 💰''',
         
-        # ЗАПУСК ПРЕМИУМ ЭФИРА - НОВАЯ КАТЕГОРИЯ
         'premium_stream_start': '''Як запустити преміум ефір:
 1. Натисни start для запуску ефіру
 2. Обери "Premium room" (преміум кімната)
@@ -310,6 +324,21 @@ HALO_TRAINING_KNOWLEDGE = {
 Головне - вивчи матеріали у групі, там все детально описано! 💪''',
         
         'agency_name': 'У розділі Агентство обирай: Tosagency-Ukraine 😊',
+        
+        'earnings_info': '''💰 Заробіток у Halo:
+📞 1 хвилина спілкування = 1$
+💳 Комісія агентства — 20%
+👉 Чистий дохід: 0.8$ за хвилину
+
+Приклади:
+- 5 хвилин = 4$ чистими
+- 10 хвилин = 8$ чистими
+- 30 хвилин = 24$ чистими
+- 1 година = 48$ чистими
+
+💵 Від 50$ на день при активній роботі
+🌍 Чоловіки зі США, Європи, ОАЕ, арабських країн
+💬 Багато приходять за спілкуванням, а не за 🔞''',
     },
     
     'en': {
@@ -350,7 +379,6 @@ HALO_TRAINING_KNOWLEDGE = {
 7. Can choose masks
 8. Press start''',
         
-        # ПРЕМИУМ ЭФИР - ИСПРАВЛЕНО!
         'premium_stream': '''Premium stream is a paid room:
 - Men pay for ENTRY to your stream (ONE-TIME payment)
 - You set the entry price (e.g., 99 coins)
@@ -360,7 +388,6 @@ HALO_TRAINING_KNOWLEDGE = {
 - Can show more than in regular stream (but within rules)
 - Good way to earn more 💰''',
         
-        # ЗАПУСК ПРЕМИУМ ЭФИРА - НОВАЯ КАТЕГОРИЯ
         'premium_stream_start': '''How to start premium stream:
 1. Press start to launch stream
 2. Choose "Premium room"
@@ -419,6 +446,21 @@ If you have questions — write me, I'm always available to help 😊''',
 Main thing - study materials in the group, everything is explained there! 💪''',
         
         'agency_name': 'In Agency section choose: Tosagency-Ukraine 😊',
+        
+        'earnings_info': '''💰 Earnings in Halo:
+📞 1 minute of communication = 1$
+💳 Agency commission — 20%
+👉 Net income: 0.8$ per minute
+
+Examples:
+- 5 minutes = 4$ net
+- 10 minutes = 8$ net
+- 30 minutes = 24$ net
+- 1 hour = 48$ net
+
+💵 From 50$ per day with active work
+🌍 Men from USA, Europe, UAE, Arab countries
+💬 Many come for communication, not for 🔞''',
     }
 }
 
@@ -427,14 +469,13 @@ Main thing - study materials in the group, everything is explained there! 💪''
 def calculate_dislike_ratio(dislikes, likes):
     """Считает коэффициент дизлайков по формуле: дизлайки / лайки"""
     if likes == 0:
-        return 0.0 if dislikes == 0 else 999.99  # Если лайков нет, но есть дизлайки - критическая ситуация
+        return 0.0 if dislikes == 0 else 999.99
     return round(dislikes / likes, 2)
 
 def extract_dislike_numbers(text):
     """Извлекает количество дизлайков и лайков из текста"""
     text_lower = text.lower()
     
-    # Паттерны для поиска чисел
     patterns = [
         r'(\d+)\s*(?:дизлайк|dislike|дизлайків|диз|дизов|дизів).*?(\d+)\s*(?:лайк|like|лайків|лайков)',
         r'(\d+)\s*(?:лайк|like|лайків|лайков).*?(\d+)\s*(?:дизлайк|dislike|дизлайків|диз|дизов|дизів)',
@@ -444,11 +485,10 @@ def extract_dislike_numbers(text):
         match = re.search(pattern, text_lower)
         if match:
             num1, num2 = int(match.group(1)), int(match.group(2))
-            # Определяем какое число - дизлайки, какое - лайки
             if 'дизлайк' in text_lower[:match.start(2)] or 'dislike' in text_lower[:match.start(2)] or 'диз' in text_lower[:match.start(2)]:
-                return num1, num2  # num1 - дизлайки, num2 - лайки
+                return num1, num2
             else:
-                return num2, num1  # num2 - дизлайки, num1 - лайки
+                return num2, num1
     
     return None, None
 
@@ -456,7 +496,6 @@ async def check_dislike_calculation(question, user_lang='ru'):
     """Проверяет вопрос на расчет коэффициента дизлайков"""
     q_lower = question.lower()
     
-    # Ключевые слова для определения вопроса о расчете
     calc_keywords = [
         'порахуй', 'посчитай', 'подсчитай', 'calculate', 'мій коефіцієнт', 'мой коэффициент',
         'my ratio', 'який коефіцієнт', 'какой коэффициент', 'what ratio', 'what is my ratio',
@@ -468,20 +507,16 @@ async def check_dislike_calculation(question, user_lang='ru'):
     
     is_calc_question = any(kw in q_lower for kw in calc_keywords)
     
-    # Или просто упоминание дизлайков и лайков с числами
     has_numbers = bool(re.search(r'\d+', question))
     has_dislikes = any(kw in q_lower for kw in ['дизлайк', 'dislike', 'дизлайків', 'диз', 'дизов', 'дизів'])
     has_likes = any(kw in q_lower for kw in ['лайк', 'like', 'лайків', 'лайков', 'лайка'])
     
-    # Если это вопрос о расчете
     if is_calc_question or (has_dislikes and has_likes and has_numbers):
         dislikes, likes = extract_dislike_numbers(question)
         
-        # Если числа найдены - считаем
         if dislikes is not None and likes is not None:
             ratio = calculate_dislike_ratio(dislikes, likes)
             
-            # Формируем ответ на нужном языке
             if ratio < 0.18:
                 status_texts = {
                     'ru': f'отлично ✅ У тебя всё в порядке!',
@@ -526,7 +561,6 @@ Status: {status}
             
             return answer_texts.get(user_lang, answer_texts['ru'])
         
-        # Если вопрос о расчете есть, но чисел нет - просим их дать
         elif is_calc_question:
             prompt_texts = {
                 'ru': '''Конечно помогу посчитать! 😊
@@ -571,11 +605,10 @@ KNOWLEDGE_KEYWORDS = {
     'how_to_post': ['как постить', 'як постити', 'how to post', 'как опубликовать', 'як опублікувати', 'как добавить пост', 'як додати пост', 'как запостить', 'як запостити', 'постить фото', 'постити фото', 'post photo', 'как делать пост', 'як робити пост', 'how to make post', 'как сделать пост', 'як зробити пост'],
     'posts': ['пост', 'post', 'публикация', 'публікація', 'лента', 'feed', 'posting', 'сколько постов', 'скільки постів', 'how many posts', 'количество постов', 'кількість постів'],
     
-    'live_stream_start': ['запустить эфир', 'запустити ефір', 'start stream', 'начать эфир', 'почати ефір', 'как запустить', 'як запустити', 'start live', 'launch stream', 'open stream', 'как запустить обычный', 'як запустити звичайний'],
+    'live_stream_start': ['запустить эфир', 'запустити ефір', 'start stream', 'начать эфир', 'почати ефір', 'как запустить', 'як запустити', 'start live', 'launch stream', 'open stream', 'как запустить обычный', 'як запустити звичайний', 'запустить трансляцию', 'запустити трансляцію'],
     'live_stream_posture': ['как сидеть', 'як сидіти', 'how to sit', 'правильно сидеть', 'правильно сидіти', 'posture', 'поза', 'сидіти в ефірі', 'сидеть в эфире'],
     
-    # ВАЖНО: Разделены категории для обычного и премиум эфира
-    'premium_stream': ['что такое премиум', 'що таке преміум', 'what is premium', 'преміум ефір', 'премиум эфир', 'premium stream', 'premium', 'преміум', 'премиум', 'платный эфир', 'платний ефір', 'paid stream'],
+    'premium_stream': ['что такое премиум', 'що таке преміум', 'what is premium', 'преміум ефір', 'премиум эфир', 'premium stream', 'premium', 'преміум', 'премиум', 'платный эфир', 'платній ефір', 'paid stream'],
     'premium_stream_start': ['запустить премиум', 'запустити преміум', 'start premium', 'как запустить премиум', 'як запустити преміум', 'how to start premium', 'launch premium'],
     
     'live_stream': ['эфир', 'stream', 'ефір', 'прямой эфир', 'live', 'трансляция', 'прямий ефір', 'broadcast'],
@@ -587,7 +620,10 @@ KNOWLEDGE_KEYWORDS = {
     'translator': ['переводчик', 'translator', 'перекладач', 'translate', 'перевод', 'переклад', 'как переводить', 'як перекладати'],
     'contract': ['контракт', 'contract', 'эксклюзив', 'exclusive', 'ексклюзив', 'підписати контракт', 'подписать контракт'],
     'social_media': ['соцсети', 'social media', 'snapchat', 'whatsapp', 'telegram', 'соцмережі', 'передавать соцсети', 'передавати соцмережі'],
-    'earnings': ['заработок', 'earnings', 'заробіток', 'доход', 'income', 'дохід', 'сколько', 'how much', 'скільки'],
+    
+    # EARNINGS - ДОСТУПНО ВСЕМ!
+    'earnings': ['заработок', 'earnings', 'заробіток', 'доход', 'income', 'дохід', 'сколько', 'how much', 'скільки', 'сколько зарабатывают', 'скільки заробляють', 'how much earn', 'сколько можно заработать', 'скільки можна заробити'],
+    
     'agency': ['агентство', 'agency', 'tosagency', 'агенство', 'какое агентство', 'which agency', 'яке агентство'],
     'registration': ['регистрация', 'registration', 'реєстрація', 'зарегистр', 'register', 'зареєстр'],
     'after_registration': ['після реєстрації', 'после регистрации', 'after registration', 'що потрібно робити', 'что нужно делать', 'what to do', 'что делать после', 'що робити після', 'первые шаги', 'перші кроки', 'first steps', 'як почати працювати', 'как начать работать', 'how to start working'],
@@ -598,7 +634,7 @@ def find_relevant_knowledge(question, user_lang='ru', is_in_groups=False):
     Находит релевантные знания по вопросу с приоритетом точности
     
     КРИТИЧЕСКИ ВАЖНО: Если пользователь НЕ в группах (is_in_groups=False),
-    НЕ возвращаем рабочие знания - только про регистрацию!
+    НЕ возвращаем рабочие знания - только про регистрацию и общие вопросы!
     """
     q_lower = question.lower()
     relevant = []
@@ -607,7 +643,8 @@ def find_relevant_knowledge(question, user_lang='ru', is_in_groups=False):
     # 🔴 БЛОКИРОВКА РАБОЧИХ ВОПРОСОВ ДЛЯ НЕ-ЧЛЕНОВ ГРУПП
     if not is_in_groups:
         # Список РАЗРЕШЕННЫХ категорий для не-членов групп
-        allowed_categories = ['registration', 'agency', 'after_registration']
+        # EARNINGS добавлен - вопросы о заработке доступны всем!
+        allowed_categories = ['registration', 'agency', 'after_registration', 'earnings']
         
         # Проверяем только разрешенные категории
         for category in allowed_categories:
@@ -625,18 +662,16 @@ def find_relevant_knowledge(question, user_lang='ru', is_in_groups=False):
                 if category in matched_categories:
                     break
         
-        # Если нашли разрешенные знания - возвращаем
         if relevant:
             return relevant
         
         # Если вопрос рабочий, но пользователь не в группах - возвращаем пустой список
-        # Это заставит бота эскалировать
         work_categories = [
             'hunting', 'multibeam', 'profile', 'posts', 'how_to_post',
             'live_stream', 'live_stream_start', 'live_stream_posture',
             'premium_stream', 'premium_stream_start', 'rules',
             'dislikes', 'dislikes_delete', 'auto_messages', 'tasks',
-            'earnings', 'translator', 'contract', 'social_media'
+            'translator', 'contract', 'social_media'
         ]
         
         for category in work_categories:
@@ -644,21 +679,22 @@ def find_relevant_knowledge(question, user_lang='ru', is_in_groups=False):
                 keywords = KNOWLEDGE_KEYWORDS[category]
                 if any(keyword in q_lower for keyword in keywords):
                     logger.warning(f"Work question from non-member blocked: {category}")
-                    return []  # Пустой список = бот должен эскалировать
+                    return []
         
         return []
     
     # Для членов групп - обычная логика
     
-    # ПРИОРИТЕТ 1: Самые специфичные категории (проверяем первыми)
+    # ПРИОРИТЕТ 1: Самые специфичные категории
     specific_checks = [
         ('how_to_post', KNOWLEDGE_KEYWORDS['how_to_post']),
-        ('premium_stream_start', KNOWLEDGE_KEYWORDS['premium_stream_start']),  # Сначала "как запустить"
-        ('premium_stream', KNOWLEDGE_KEYWORDS['premium_stream']),  # Потом "что такое"
+        ('premium_stream_start', KNOWLEDGE_KEYWORDS['premium_stream_start']),
+        ('premium_stream', KNOWLEDGE_KEYWORDS['premium_stream']),
         ('live_stream_start', KNOWLEDGE_KEYWORDS['live_stream_start']),
         ('live_stream_posture', KNOWLEDGE_KEYWORDS['live_stream_posture']),
         ('dislikes_delete', KNOWLEDGE_KEYWORDS['dislikes_delete']),
         ('after_registration', KNOWLEDGE_KEYWORDS['after_registration']),
+        ('earnings', KNOWLEDGE_KEYWORDS['earnings']),
     ]
     
     for category, keywords in specific_checks:
@@ -834,7 +870,6 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     
     user_lang = user['language'] if user and user['language'] else 'ru'
     
-    # ИСПРАВЛЕНО: Передаем is_in_groups в find_relevant_knowledge
     relevant_knowledge = find_relevant_knowledge(question, user_lang, is_in_groups)
     
     status = user['status']
@@ -862,7 +897,7 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     if is_in_groups:
         group_status = "✅ ЕСТЬ В ГРУППАХ - можешь отвечать на ВСЕ рабочие вопросы"
     else:
-        group_status = "❌ НЕТ В ГРУППАХ - отвечай ТОЛЬКО на вопросы о РЕГИСТРАЦИИ"
+        group_status = "❌ НЕТ В ГРУППАХ - отвечай ТОЛЬКО на вопросы о РЕГИСТРАЦИИ и ЗАРАБОТКЕ"
     
     last_messages = history[-5:] if len(history) >= 5 else history
     recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
@@ -875,7 +910,6 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     
     training_materials = ""
     
-    # ВАЖНО: Материалы можно использовать ТОЛЬКО если пользователь В ГРУППАХ
     if is_in_groups:
         texts_all = await get_all_analysis_texts(lang=user_lang)
         audios_all = await get_all_analysis_audios(lang=user_lang)
@@ -907,7 +941,6 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
     lang_names = {'ru': 'РУССКОМ', 'uk': 'УКРАЇНСЬКОЮ', 'en': 'ENGLISH'}
     lang_name = lang_names.get(user_lang, 'РУССКОМ')
     
-    # Дополнительные напоминания о языке
     lang_reminders = {
         'ru': '⚠️ ЯЗЫК ОТВЕТА: ТОЛЬКО РУССКИЙ! Никаких других языков!',
         'uk': '⚠️ МОВА ВІДПОВІДІ: ТІЛЬКИ УКРАЇНСЬКА! Жодних інших мов!',
@@ -920,15 +953,17 @@ async def build_context_prompt(user_id, question, is_in_groups=False):
         not_in_groups_warning = f"""
 🔴🔴🔴 КРИТИЧЕСКИ ВАЖНО 🔴🔴🔴
 ПОЛЬЗОВАТЕЛЬ НЕ В ГРУППАХ!
-ТЫ МОЖЕШЬ ОТВЕЧАТЬ ТОЛЬКО НА ВОПРОСЫ О РЕГИСТРАЦИИ!
+ТЫ МОЖЕШЬ ОТВЕЧАТЬ ТОЛЬКО НА ВОПРОСЫ О:
+✅ РЕГИСТРАЦИИ
+✅ ЗАРАБОТКЕ (сколько платят, как зарабатывают)
+
 НЕ ОТВЕЧАЙ на вопросы про:
-- эфиры, стримы, трансляции (премиум или обычные)
-- как работать
-- заработок
-- правила работы
-- дизлайки, охоту, мультибимы
-- посты, профиль (кроме создания при регистрации)
-- автосообщения, задания
+❌ эфиры, стримы, трансляции (премиум или обычные)
+❌ как работать
+❌ правила работы
+❌ дизлайки, охоту, мультибимы
+❌ посты, профиль (кроме создания при регистрации)
+❌ автосообщения, задания
 
 Если спрашивают о работе - скажи:
 "{get_not_in_groups_message(user_lang)}"
@@ -1012,7 +1047,33 @@ def get_not_in_groups_message(user_lang='ru'):
 async def check_faq_direct_match(question, user_lang='ru'):
     q_lower = question.lower().strip()
     
-    relevant_knowledge = find_relevant_knowledge(question, user_lang)
+    # ===== НОВАЯ ПРОВЕРКА: Прямые ответы на популярные вопросы =====
+    
+    # 1. КАК ЗАПУСТИТЬ ЭФИР
+    launch_stream_keywords = {
+        'ru': ['как запустить эфир', 'как запустить трансляцию', 'запустить стрим', 'начать эфир'],
+        'uk': ['як запустити ефір', 'як запустити трансляцію', 'запустити стрім', 'почати ефір'],
+        'en': ['how to start stream', 'how to launch stream', 'start streaming', 'begin stream']
+    }
+    
+    for lang, keywords in launch_stream_keywords.items():
+        if any(kw in q_lower for kw in keywords):
+            return HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru']).get('live_stream_start')
+    
+    # 2. ЗАРАБОТКИ
+    earnings_keywords = {
+        'ru': ['сколько зарабатывают', 'сколько можно заработать', 'какой заработок'],
+        'uk': ['скільки заробляють', 'скільки можна заробити', 'який заробіток'],
+        'en': ['how much earn', 'how much can i earn', 'what are earnings']
+    }
+    
+    for lang, keywords in earnings_keywords.items():
+        if any(kw in q_lower for kw in keywords):
+            return HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru']).get('earnings_info')
+    
+    # ===== СТАРЫЕ ПРОВЕРКИ =====
+    
+    relevant_knowledge = find_relevant_knowledge(question, user_lang, is_in_groups=True)
     if relevant_knowledge and len(q_lower.split()) <= 15:
         return relevant_knowledge[0]
     
@@ -1303,14 +1364,27 @@ If the format suits — waiting for photos 👋"""
 async def is_contextual_question(question, history):
     q_lower = question.lower().strip()
     
+    # РАСШИРЕННЫЙ список вариантов "что делать"
     what_to_do_variants = [
+        # Русский
         'що мені робити', 'что мне делать', 'що робити', 'что делать',
         'що мені', 'что мне', 'що далі', 'что дальше', 
         'що тепер', 'что теперь', 'що зараз', 'что сейчас',
+        'что нужно делать', 'що потрібно робити', 'що потрібно зробити',
+        'что нужно сделать', 'що треба робити', 'что надо делать',
+        
+        # Українська
+        'що мені робити зараз', 'що робити далі', 'що робити тепер',
+        'що треба зробити', 'що потрібно',
+        
+        # English
         'what should i do', 'what now', 'what next', 'what to do', 'what i need to do',
+        'what do i need', 'what should i', 'what to do next', 'what do i do',
+        
+        # Короткие варианты
         'і що', 'и что', 'а що', 'а what', 'а тепер', 'а теперь',
-        'що мені робити зараз', 'что мне делать сейчас',
-        'okay, what', 'ok, what', 'so what', 'okay what'
+        'okay, what', 'ok, what', 'so what', 'okay what', 'and what',
+        'що ж', 'что ж', 'ну що', 'ну что', 'і що далі', 'и что дальше'
     ]
     
     if not any(variant in q_lower for variant in what_to_do_variants):
@@ -1332,7 +1406,8 @@ async def is_contextual_question(question, history):
     photo_request_keywords = [
         'send 2-3 photos', 'send 2–3 photos', 'пришли 2-3 фото', 'пришли 2–3 фото',
         'надішли 2-3 фото', 'надішли 2–3 фото', 'waiting for photos', 'жду фото', 'чекаю фото',
-        'how to start', 'як почати', 'как начать', 'if the format suits'
+        'how to start', 'як почати', 'как начать', 'if the format suits',
+        'пришли мне фото', 'надішли мені фото', 'send me photos'
     ]
     
     instructions_keywords = [
@@ -1386,16 +1461,19 @@ async def get_ai_response_with_retry(user_id, question, max_retries=3, is_in_gro
     user = await get_user(user_id)
     user_lang = user['language'] if user and user['language'] else 'ru'
     
-    # 🔴 НОВАЯ ПРОВЕРКА - правильные отступы!
+    # 🔴 ПРОВЕРКА - блокируем рабочие вопросы для не-членов групп
+    # КРОМЕ вопросов о заработках!
     if not is_in_groups:
         q_lower = question.lower()
         
+        # Список категорий, которые БЛОКИРУЮТСЯ для не-членов
+        # earnings НЕТ в этом списке - вопросы о заработке доступны всем!
         work_categories = [
             'hunting', 'multibeam', 'profile', 'posts', 'how_to_post',
             'live_stream', 'live_stream_start', 'live_stream_posture',
             'premium_stream', 'premium_stream_start', 'rules',
             'dislikes', 'dislikes_delete', 'auto_messages', 'tasks',
-            'earnings', 'translator', 'contract', 'social_media'
+            'translator', 'contract', 'social_media'
         ]
         
         is_work_question = False
@@ -1417,7 +1495,8 @@ async def get_ai_response_with_retry(user_id, question, max_retries=3, is_in_gro
                 'escalate': False
             }
     
-    # Дальше обычная логика
+    # Проверки идут в порядке приоритета
+    
     dislike_calc_answer = await check_dislike_calculation(question, user_lang)
     if dislike_calc_answer:
         logger.info(f"Dislike calculation for user {user_id}")
@@ -1496,7 +1575,6 @@ async def get_ai_response(user_id, question, is_in_groups=False):
     user = await get_user(user_id)
     user_lang = user['language'] if user and user['language'] else 'ru'
     
-    # Дополнительная проверка: если язык не установлен, пытаемся определить из вопроса
     if not user_lang or user_lang not in ['ru', 'uk', 'en']:
         from utils.language_detector import detect_language
         detected_lang = detect_language(question)
