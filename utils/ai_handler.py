@@ -709,6 +709,7 @@ def find_relevant_knowledge(question, user_lang='ru', is_in_groups=False):
         ('premium_stream', KNOWLEDGE_KEYWORDS['premium_stream']),
         ('live_stream_start', KNOWLEDGE_KEYWORDS['live_stream_start']),
         ('live_stream_posture', KNOWLEDGE_KEYWORDS['live_stream_posture']),
+        ('dislike_calculation_help', KNOWLEDGE_KEYWORDS['dislike_calculation_help']),
         ('dislikes_delete', KNOWLEDGE_KEYWORDS['dislikes_delete']),
         ('after_registration', KNOWLEDGE_KEYWORDS['after_registration']),
         ('earnings', KNOWLEDGE_KEYWORDS['earnings']),
