@@ -238,6 +238,7 @@ HALO_TRAINING_KNOWLEDGE = {
 - Роби від 20 постів на день
 - Інтервал - 1 пост кожні 10-15 хвилин
 - Заборонено: AI-фото, фото з Pinterest, чужі фото
+- Фото в купальнику можна ТІЛЬКИ в "привабливі фотографії" (платний розділ)
 - Порушення = бан від 3 днів або назавжди''',
         
         'live_stream_posture': '''Як правильно сидіти в ефірі:
@@ -360,6 +361,7 @@ HALO_TRAINING_KNOWLEDGE = {
 - Make at least 20 posts per day
 - Interval - 1 post every 10-15 minutes
 - Forbidden: AI photos, Pinterest photos, others' photos
+- Swimsuit photos ONLY in "attractive photos" (paid section)
 - Violations = ban from 3 days or forever''',
         
         'live_stream_posture': '''How to sit correctly during stream:
