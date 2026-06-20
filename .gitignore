@@ -1,0 +1,14 @@
+/venv
+.env
+*.db
+*.log
+DOCUMENTATION.md
+*/__pycache__
+/har_and_cookies
+/__pycache__
+/analaudio
+/analtext
+/analvideo
+/analsms
+ai_handler.txt
+config.txt
