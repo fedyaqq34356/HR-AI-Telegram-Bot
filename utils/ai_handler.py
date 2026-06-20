@@ -1,0 +1,1708 @@
+# utils/ai_handler.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
+import json
+import asyncio
+import logging
+import re
+from g4f.client import Client
+from g4f.Provider import RetryProvider
+import g4f
+
+from config import SYSTEM_PROMPT, AI_CONFIDENCE_THRESHOLD, UNIVERSAL_RESPONSE
+from database import get_messages, get_faq, get_ai_learning, get_user, get_forbidden_topics_from_db
+
+logger = logging.getLogger(__name__)
+
+all_providers = [
+    provider for provider in g4f.Provider.__providers__ 
+    if provider.working
+]
+
+client = Client(
+    provider=RetryProvider(all_providers, shuffle=True)
+)
+
+# ============ ПОЛНАЯ БАЗА ЗНАНИЙ ПО HALO ============
+
+HALO_TRAINING_KNOWLEDGE = {
+    'ru': {
+        # БАЗОВАЯ ИНФОРМАЦИЯ
+        'start_hunting': 'Нажми значок сети и выбери "начать охоту" (start hunting). Эта функция называется хайтинг/hunting.',
+        'hunting_info': '''Охота (hunting) - это обязательная функция перед звонками:
+- Дает +4 коина ($0.20) и повышает цену за звонок
+- Звонок сбрасывается автоматически через 2 минуты
+- Если клиент отключился раньше - охота не засчитывается, нужно проходить повторно
+- Если не прошла охоту - минус 20% коинов со всех звонков
+- Если получила дизлайк - минус 25% коинов
+- Делать раз в сутки, до звонков''',
+        
+        # МУЛЬТИБИМЫ
+        'multibeam_join': 'Чтобы присоединиться к мультибиму, нажми "Press unit" и жди очередь, пока тебя подключат в спот.',
+        'multibeam_types': '''Есть два типа Multi Beam:
+1) Официальные - в самом верху в закреплённых. Иногда могут не добавить, особенно если арабский эфир
+2) Неофициальные - немного ниже официальных, иногда появляются. Не всегда доступны, но можно зайти и заработать
+Если войдёшь в топ 200 приложения - откроется доступ к открытию своего неофициального MultiBeam''',
+        
+        # ПРОФИЛЬ
+        'profile_edit': '''Редактирование профиля:
+1. Нажми на свою иконку → стрелочку → редактировать
+2. Можешь изменить: аватар, обложку, привлекательные фото
+3. Аватар и обложка должны отличаться
+4. ЗАПРЕЩЕНО на аватаре/обложке: нижнее белье, купальник, откровенная одежда
+5. Фото в купальнике МОЖНО добавлять ТОЛЬКО в "привлекательные фотографии" (платный раздел)
+6. В обычные фото и посты - купальник ЗАПРЕЩЕН
+Можно изменить: никнейм, возраст, Область, языки
+8. В "Обо мне" напиши например: "I'm new here, be gentleman"''',
+        
+        # ПУБЛИКАЦИЯ ПОСТОВ
+        'posts_activity': '''Публикация постов = больше звонков:
+- Делай от 20 постов в день
+- Интервал - 1 пост каждые 10-15 минут
+- Запрещено: AI-фото, фото с Pinterest, чужие фото
+- Фото в купальнике можно ТОЛЬКО в "привлекательные фотографии" (платный раздел)
+- Нарушения = бан от 3 дней или навсегда''',
+        'how_to_post': '''Как публиковать посты:
+1. Нажми на кнопку публикации
+2. Добавь подпись ОБЯЗАТЕЛЬНО на английском (например: "I'm new here" или "Call me")
+3. Нажми плюс, добавь фото
+4. Нажми опубликовать
+Можешь заходить в ленту смотреть как далеко твоё фото - если далеко, публикуй новое''',
+        
+        # ПРЯМЫЕ ЭФИРЫ - ПОЗИЦИЯ
+        'live_stream_posture': '''Как правильно сидеть в эфире:
+✅ МОЖНО: сидеть ровно, камера на уровне глаз (телефон прямо напротив лица), видно лицо, хороший свет
+❌ НЕЛЬЗЯ: лежать, снимать снизу или сверху, сутулиться, тёмный кадр''',
+        
+        # ПРЯМЫЕ ЭФИРЫ - ЗАПУСК
+        'live_stream_start': '''Запуск обычного прямого эфира:
+1. Нажми start, чтобы запустить
+2. Выбери обложку (НЕ в нижнем белье, иначе отключат)
+3. Напиши название комнаты: "I'm new here"
+4. Описание: "Call me"
+5. Квота комнаты - сколько хочешь заработать монет
+6. Выбери подарок для приватной зоны (рекомендую 99 монет сначала)
+7. Можешь выбрать маски
+8. Нажми start''',
+        
+        'live_stream_messages': '''Когда запускаешь эфир - ОБЯЗАТЕЛЬНО пиши мужчинам:
+- Видишь зашёл мужчина с s-vip или уровнем
+- Сразу нажми на его nickname
+- Напиши: "Hi, call me"
+- Большинство заходят, смотрят и уходят - важно написать первой''',
+        
+        # ПРЕМИУМ ЭФИР - ИСПРАВЛЕНО!
+        'premium_stream': '''Премиум эфир - это платная комната:
+- Мужчины платят ЗА ВХОД в твой эфир (ОДНОРАЗОВАЯ оплата)
+- Ты устанавливаешь цену за вход (например, 99 монет)
+- ⚠️ ВАЖНО: Оплата ТОЛЬКО ЗА ВХОД, мужчина НЕ платит за каждую минуту!
+- После оплаты входа мужчина может находиться в эфире сколько хочет
+- Премиум эфир = приватный формат для группы мужчин
+- Можно показывать больше чем в обычном эфире (но в рамках правил)
+- Хороший способ заработать больше 💰''',
+        
+        # ЗАПУСК ПРЕМИУМ ЭФИРА - НОВАЯ КАТЕГОРИЯ
+        'premium_stream_start': '''Как запустить премиум эфир:
+1. Нажми start для запуска эфира
+2. Выбери "Premium room" (премиум комната)
+3. Установи цену за вход (например, 99 монет)
+4. Выбери обложку (НЕ в нижнем белье!)
+5. Название: "Premium show" или "VIP room"
+6. Описание: "Join my premium room"
+7. Нажми start
+⚠️ Помни: мужчины платят ОДИН РАЗ за вход, НЕ за каждую минуту!''',
+        
+        # ПРАВИЛА ЭФИРОВ
+        'live_stream_rules': '''Правила прямых эфиров:
+ЗАПРЕЩЕНО:
+- Показывать интимные части тела крупным планом
+- Тверкинг, тряска телом, эротичные движения
+- Трогать интимные части тела
+- Стонать или издавать эротические звуки
+- Показывать секс-игрушки
+- Использовать предметы фаллической формы (банан, огурец)
+ДРЕСС-КОД:
+- Запрещена одежда с открытыми сосками или большой частью груди
+- Запрещена слишком откровенная/прозрачная одежда без прикрытия
+- Нижнее бельё и стринги РАЗРЕШЕНЫ''',
+        
+        # ЗАДАНИЯ И ДИЗЛАЙКИ
+        'tasks': '''Выполнение заданий:
+- Нажми "центр задач"
+- Есть ежедневные, еженедельные, ежемесячные задания
+- За них получаешь золотые коины (доллары) или фиолетовые очки
+- За очки можешь удалять дизлайки или продвигать трансляцию
+В магазине очков:
+- День без охоты - 300 очков
+- Увеличение актива в комнате - 200 очков
+- Минус один дизлайк - 200 очков''',
+        
+        'dislikes_info': '''Два коэффициента дизлайков:
+1️⃣ Коэффициент в профиле (видишь в профиле):
+- Всегда должен быть НИЖЕ 0.18
+- Если 0.18 или выше - нарушение, могут заблокировать
+2️⃣ Коэффициент за 30 дней (не видно):
+- Нужно считать самостоятельно
+- Офис проверяет каждый день
+- Тоже должен быть ниже 0.18''',
+        
+        'dislikes_delete': '''Как удалить дизлайк:
+1. Зайди в "центр задач"
+2. Выполняй задания, чтобы получить фиолетовые очки
+3. Накопи 200 очков
+4. Зайди в магазин очков
+5. Купи "Минус один дизлайк" за 200 очков
+Так можно удалять дизлайки и поддерживать коэффициент ниже 0.18 ✅''',
+        
+        'dislike_calculation_help': '''Как высчитать коэффициент неприязни за 30 дней:
+Ты можешь посмотреть подробную информацию в группе с обучением, там подробно написано об этом. После того, как ты посчитаешь все свои лайки и дизлайки за последние 30 дней, ты можешь написать мне и я посчитаю тебе коэффициент неприязни 😊''',
+        
+        # АВТОСООБЩЕНИЯ
+        'auto_messages': '''Автосообщения:
+- ОБЯЗАТЕЛЬНО делай автосообщения
+- Через 10 дней несколько мужчин могут открыть платный контент
+- Одно сообщение идёт ~600 мужчинам
+- Откроют ~10, купят 1-2
+- Если 10 автосообщений работают - это +$100
+- Работают в долгую - настраивай и жди''',
+        
+        # РЕГИСТРАЦИЯ
+        'registration_steps': '''Регистрация в Halo:
+1. Скачай приложение For hosts (розовое) с https://livegirl.me/#/mobilepage
+2. Открой → нажми "Регистрация"
+3. Введи: почту, пароль
+4. Укажи: никнейм, возраст, языки (арабский, английский, украинский, русский)
+5. В разделе Агентство: Tosagency-Ukraine
+6. Загрузи фото и запиши видео-приветствие
+Видео: "Hello, my name is [имя]. I am [возраст] years old. I live in [страна]. I want to join."
+7. Пришли скрин с ID и агентством
+8. Я отправлю заявку в офис
+9. На следующий будний день активируют аккаунт''',
+        
+        'after_registration': '''После регистрации и активации:
+1. Присоединись к двум группам - там ссылки на группы
+2. В группе "Обучение" есть закреплённое сообщение - ОБЯЗАТЕЛЬНО прочитай его полностью
+3. Там есть все инструкции: как запустить эфир, как работать, правила, как зарабатывать
+4. Изучи все материалы в группе - там видео, текстовые гайды
+5. Настрой профиль: добавь теги, привлекательные фото
+6. Начни делать посты (20+ в день)
+7. Запусти первый прямой эфир
+8. Пройди охоту (hunting) перед звонками
+9. Пиши мужчинам первой когда заходят в эфир
+Если возникнут вопросы — пиши, я всегда на связи и помогу 😊''',
+        
+        'first_steps': '''Первые шаги в приложении:
+1. Зайди в группу "Обучение" - прочитай закреплённое сообщение
+2. Настрой профиль: фото, теги, описание
+3. Начни публиковать посты (минимум 20 в день, каждые 10-15 минут)
+4. Запусти прямой эфир - просто посиди онлайн
+5. Когда зайдёт мужчина с уровнем - напиши ему "Hi, call me"
+6. Перед первым звонком пройди охоту (hunting)
+7. В звонке можешь просто общаться, каждая минута = 0.8$
+Главное - изучи материалы в группе, там всё подробно расписано! 💪''',
+        
+        # АГЕНТСТВО
+        'agency_name': 'В разделе Агентство выбирай: Tosagency-Ukraine 😊',
+        
+        # ЗАРАБОТКИ - ДОСТУПНО ВСЕМ!
+        'earnings_info': '''💰 Заработок в Halo:
+📞 1 минута общения = 1$
+💳 Комиссия агентства — 20%
+👉 Чистый доход: 0.8$ за минуту
+
+Примеры:
+- 5 минут = 4$ чистыми
+- 10 минут = 8$ чистыми
+- 30 минут = 24$ чистыми
+- 1 час = 48$ чистыми
+
+💵 От 50$ в день при активной работе
+🌍 Мужчины из США, Европы, ОАЭ, арабских стран
+💬 Многие приходят за общением, а не за 🔞''',
+    },
+    
+    'uk': {
+        'start_hunting': 'Натисни значок мережі і обери "почати полювання" (start hunting). Ця функція називається хайтинг/hunting.',
+        'hunting_info': '''Полювання (hunting) - це обов'язкова функція перед дзвінками:
+- Дає +4 коїна ($0.20) і підвищує ціну за дзвінок
+- Дзвінок скидається автоматично через 2 хвилини
+- Якщо клієнт відключився раніше - полювання не зараховується, потрібно проходити повторно
+- Якщо не пройшла полювання - мінус 20% коїнів з усіх дзвінків
+- Якщо отримала дизлайк - мінус 25% коїнів
+- Робити раз на добу, до дзвінків''',
+        
+        'multibeam_join': 'Щоб приєднатися до мультибіму, натисни "Press unit" і чекай чергу, поки тебе підключать у спот.',
+        
+        # 🔴 ИЗМЕНЕНИЕ 1: Исправлен profile_edit - убран пункт 7, оставлен текст без номера
+        'profile_edit': '''Редагування профілю:
+1. Натисни на свою іконку → стрілочку → редагувати
+2. Можеш змінити: аватар, обкладинку, привабливі фото
+3. Аватар і обкладинка повинні відрізнятися
+4. ЗАБОРОНЕНО на аватарі/обкладинці: нижня білизна, купальник, відверте одягання
+5. Фото в купальнику МОЖНА додавати ТІЛЬКИ в "привабливі фотографії" (платний розділ)
+6. В звичайні фото та пости - купальник ЗАБОРОНЕНО
+Можна змінити: нікнейм, вік, Область, мови
+8. В "Про мене" напиши наприклад: "I'm new here, be gentleman"''',
+        
+        'posts_activity': '''Публікація постів = більше дзвінків:
+- Роби від 20 постів на день
+- Інтервал - 1 пост кожні 10-15 хвилин
+- Заборонено: AI-фото, фото з Pinterest, чужі фото
+- Фото в купальнику можна ТІЛЬКИ в "привабливі фотографії" (платний розділ)
+- Порушення = бан від 3 днів або назавжди''',
+        
+        'live_stream_posture': '''Як правильно сидіти в ефірі:
+✅ МОЖНА: сидіти рівно, камера на рівні очей (телефон прямо навпроти обличчя), видно обличчя, хороше освітлення
+❌ НЕ МОЖНА: лежати, знімати знизу або зверху, горбитися, темний кадр''',
+        
+        'live_stream_start': '''Запуск звичайного прямого ефіру:
+1. Натисни start, щоб запустити
+2. Обери обкладинку (НЕ у нижній білизні, інакше відключать)
+3. Напиши назву кімнати: "I'm new here"
+4. Опис: "Call me"
+5. Квота кімнати - скільки хочеш заробити монет
+6. Обери подарунок для приватної зони (рекомендую 99 монет спочатку)
+7. Можеш обрати маски
+8. Натисни start''',
+        
+        'premium_stream': '''Преміум ефір - це платна кімната:
+- Чоловіки платять ЗА ВХІД у твій ефір (ОДНОРАЗОВА оплата)
+- Ти встановлюєш ціну за вхід (наприклад, 99 монет)
+- ⚠️ ВАЖЛИВО: Оплата ТІЛЬКИ ЗА ВХІД, чоловік НЕ платить за кожну хвилину!
+- Після оплати входу чоловік може перебувати в ефірі скільки хоче
+- Преміум ефір = приватний формат для групи чоловіків
+- Можна показувати більше ніж у звичайному ефірі (але в рамках правил)
+- Хороший спосіб заробити більше 💰''',
+        
+        'premium_stream_start': '''Як запустити преміум ефір:
+1. Натисни start для запуску ефіру
+2. Обери "Premium room" (преміум кімната)
+3. Встанови ціну за вхід (наприклад, 99 монет)
+4. Обери обкладинку (НЕ у нижній білизні!)
+5. Назва: "Premium show" або "VIP room"
+6. Опис: "Join my premium room"
+7. Натисни start
+⚠️ Пам'ятай: чоловіки платять ОДИН РАЗ за вхід, НЕ за кожну хвилину!''',
+        
+        'dislikes_info': '''Два коефіцієнти дизлайків:
+1️⃣ Коефіцієнт у профілі (бачиш у профілі):
+- Завжди має бути НИЖЧЕ 0.18
+- Якщо 0.18 або вище - порушення, можуть заблокувати
+2️⃣ Коефіцієнт за 30 днів (не видно):
+- Потрібно рахувати самостійно
+- Офіс перевіряє щодня
+- Також має бути нижче 0.18''',
+        
+        'dislikes_delete': '''Як видалити дизлайк:
+1. Зайди в "центр завдань"
+2. Виконуй завдання, щоб отримати фіолетові очки
+3. Накопи 200 очок
+4. Зайди в магазин очок
+5. Купи "Мінус один дизлайк" за 200 очок
+Так можна видаляти дизлайки і підтримувати коефіцієнт нижче 0.18 ✅''',
+        
+        # 🔴 ИЗМЕНЕНИЕ 2: Исправлен dislike_calculation_help
+        'dislike_calculation_help': '''Як порахувати коефіцієнт неприязні за 30 днів:
+Ти можеш подивитись детальну інформацію в групі з навчанням, там детально написано про це. Після того, як ти порахуєш всі свої лайки та дизлайки за останні 30 днів, ти можеш написати мені і я порахую тобі коефіцієнт неприязні 😊''',
+        
+        'auto_messages': '''Автоповідомлення:
+- ОБОВ'ЯЗКОВО роби автоповідомлення
+- Через 10 днів кілька чоловіків можуть відкрити платний контент
+- Одне повідомлення йде ~600 чоловікам
+- Відкриють ~10, куплять 1-2
+- Якщо 10 автоповідомлень працюють - це +$100
+- Працюють на довгу дистанцію - налаштовуй і чекай''',
+        
+        'after_registration': '''Після реєстрації та активації:
+1. Приєднайся до двох груп - там посилання на групи
+2. У групі "Навчання" є закріплене повідомлення - ОБОВ'ЯЗКОВО прочитай його повністю
+3. Там є всі інструкції: як запустити ефір, як працювати, правила, як заробляти
+4. Вивчи всі матеріали у групі - там відео, текстові гайди
+5. Налаштуй профіль: додай теги, привабливі фото
+6. Почни робити пости (20+ на день)
+7. Запусти перший прямий ефір
+8. Пройди полювання (hunting) перед дзвінками
+9. Пиши чоловікам першою коли заходять в ефір
+Якщо виникнуть питання — пиши, я завжди на зв'язку і допоможу 😊''',
+        
+        'first_steps': '''Перші кроки в застосунку:
+1. Зайди у групу "Навчання" - прочитай закріплене повідомлення
+2. Налаштуй профіль: фото, теги, опис
+3. Почни публікувати пости (мінімум 20 на день, кожні 10-15 хвилин)
+4. Запусти прямий ефір - просто посиди онлайн
+5. Коли зайде чоловік з рівнем - напиши йому "Hi, call me"
+6. Перед першим дзвінком пройди полювання (hunting)
+7. У дзвінку можеш просто спілкуватися, кожна хвилина = 0.8$
+Головне - вивчи матеріали у групі, там все детально описано! 💪''',
+        
+        'agency_name': 'У розділі Агентство обирай: Tosagency-Ukraine 😊',
+        
+        'earnings_info': '''💰 Заробіток у Halo:
+📞 1 хвилина спілкування = 1$
+💳 Комісія агентства — 20%
+👉 Чистий дохід: 0.8$ за хвилину
+
+Приклади:
+- 5 хвилин = 4$ чистими
+- 10 хвилин = 8$ чистими
+- 30 хвилин = 24$ чистими
+- 1 година = 48$ чистими
+
+💵 Від 50$ на день при активній роботі
+🌍 Чоловіки зі США, Європи, ОАЕ, арабських країн
+💬 Багато приходять за спілкуванням, а не за 🔞''',
+    },
+    
+    'en': {
+        'start_hunting': 'Tap the network icon and select "start hunting". This feature is called hunting/hating.',
+        'hunting_info': '''Hunting is mandatory before calls:
+- Gives +4 coins ($0.20) and increases call price
+- Call resets automatically after 2 minutes
+- If client hangs up earlier - hunt doesn't count, need to repeat
+- If didn't complete hunt - minus 20% coins from all calls
+- If got dislike - minus 25% coins
+- Do once per day, before calls''',
+        
+        'multibeam_join': 'To join multibeam, press "Press unit" and wait in line until they connect you to a spot.',
+        
+        'profile_setup': '''Profile setup:
+- Set tags - men search for girls by tags
+- Add attractive photos - photos influence decision to write or call
+- Can add photos in swimsuit, outfits where you feel confident
+- Profile is your showcase, make it attractive''',
+        
+        'posts_activity': '''Posting = more calls:
+- Make at least 20 posts per day
+- Interval - 1 post every 10-15 minutes
+- Forbidden: AI photos, Pinterest photos, others' photos
+- Swimsuit photos ONLY in "attractive photos" (paid section)
+- Violations = ban from 3 days or forever''',
+        
+        'live_stream_posture': '''How to sit correctly during stream:
+✅ ALLOWED: sit straight, camera at eye level (phone directly in front of face), face visible, good lighting
+❌ NOT ALLOWED: lying down, filming from below or above, slouching, dark frame''',
+        
+        'live_stream_start': '''Starting a regular live stream:
+1. Press start to launch
+2. Choose cover (NOT in underwear, or they'll disconnect you)
+3. Write room title: "I'm new here"
+4. Description: "Call me"
+5. Room quota - how many coins you want to earn
+6. Choose gift for private zone (recommend 99 coins at first)
+7. Can choose masks
+8. Press start''',
+        
+        'premium_stream': '''Premium stream is a paid room:
+- Men pay for ENTRY to your stream (ONE-TIME payment)
+- You set the entry price (e.g., 99 coins)
+- ⚠️ IMPORTANT: Payment ONLY for ENTRY, man does NOT pay per minute!
+- After paying entry, man can stay in stream as long as he wants
+- Premium stream = private format for a group of men
+- Can show more than in regular stream (but within rules)
+- Good way to earn more 💰''',
+        
+        'premium_stream_start': '''How to start premium stream:
+1. Press start to launch stream
+2. Choose "Premium room"
+3. Set entry price (e.g., 99 coins)
+4. Choose cover (NOT in underwear!)
+5. Title: "Premium show" or "VIP room"
+6. Description: "Join my premium room"
+7. Press start
+⚠️ Remember: men pay ONCE for entry, NOT per minute!''',
+        
+        'dislikes_info': '''Two dislike ratios:
+1️⃣ Profile ratio (you can see):
+- Always must be BELOW 0.18
+- If 0.18 or higher - violation, may be blocked
+2️⃣ 30-day ratio (not visible):
+- Need to calculate manually
+- Office checks daily
+- Also must be below 0.18''',
+        
+        'dislikes_delete': '''How to delete a dislike:
+1. Go to "task center"
+2. Complete tasks to get purple points
+3. Accumulate 200 points
+4. Go to points shop
+5. Buy "Minus one dislike" for 200 points
+This way you can delete dislikes and keep ratio below 0.18 ✅''',
+        
+        'dislike_calculation_help': '''How to calculate dislike ratio for 30 days:
+You can find detailed information in the training group, it's explained in detail there. After you count all your likes and dislikes for the last 30 days, you can message me and I'll calculate your dislike ratio 😊''',
+        
+        'auto_messages': '''Auto-messages:
+- MUST set up auto-messages
+- After 10 days several men might unlock paid content
+- One message sent to ~600 men
+- ~10 will open, 1-2 will buy
+- If 10 auto-messages work - that's +$100
+- Work long-term - set up and wait''',
+        
+        'after_registration': '''After registration and activation:
+1. Join two groups - links are provided
+2. In "Training" group there's a pinned message - MUST read it fully
+3. It has all instructions: how to start stream, how to work, rules, how to earn
+4. Study all materials in the group - videos, text guides
+5. Set up profile: add tags, attractive photos
+6. Start posting (20+ per day)
+7. Start your first live stream
+8. Complete hunting before calls
+9. Message men first when they join your stream
+If you have questions — write me, I'm always available to help 😊''',
+        
+        'first_steps': '''First steps in the app:
+1. Go to "Training" group - read the pinned message
+2. Set up profile: photos, tags, description
+3. Start posting (minimum 20 per day, every 10-15 minutes)
+4. Start live stream - just be online
+5. When a man with level joins - message him "Hi, call me"
+6. Before first call complete hunting
+7. In calls you can just chat, every minute = 0.8$
+Main thing - study materials in the group, everything is explained there! 💪''',
+        
+        'agency_name': 'In Agency section choose: Tosagency-Ukraine 😊',
+        
+        'earnings_info': '''💰 Earnings in Halo:
+📞 1 minute of communication = 1$
+💳 Agency commission — 20%
+👉 Net income: 0.8$ per minute
+
+Examples:
+- 5 minutes = 4$ net
+- 10 minutes = 8$ net
+- 30 minutes = 24$ net
+- 1 hour = 48$ net
+
+💵 From 50$ per day with active work
+🌍 Men from USA, Europe, UAE, Arab countries
+💬 Many come for communication, not for 🔞''',
+    }
+}
+
+# ============ РАСЧЕТ КОЭФФИЦИЕНТА ДИЗЛАЙКОВ ============
+
+def calculate_dislike_ratio(dislikes, likes):
+    """Считает коэффициент дизлайков по формуле: дизлайки / лайки"""
+    if likes == 0:
+        return 0.0 if dislikes == 0 else 999.99
+    return round(dislikes / likes, 2)
+
+def extract_dislike_numbers(text):
+    """Извлекает количество дизлайков и лайков из текста"""
+    text_lower = text.lower()
+    
+    patterns = [
+        r'(\d+)\s*(?:дизлайк|dislike|дизлайків|диз|дизов|дізів).*?(\d+)\s*(?:лайк|like|лайків|лайков)',
+        r'(\d+)\s*(?:лайк|like|лайків|лайков).*?(\d+)\s*(?:дизлайк|dislike|дизлайків|диз|дизов|дізів)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            num1, num2 = int(match.group(1)), int(match.group(2))
+            if 'дизлайк' in text_lower[:match.start(2)] or 'dislike' in text_lower[:match.start(2)] or 'диз' in text_lower[:match.start(2)]:
+                return num1, num2
+            else:
+                return num2, num1
+    
+    return None, None
+
+async def check_dislike_calculation(question, user_lang='ru'):
+    """Проверяет вопрос на расчет коэффициента дизлайков"""
+    q_lower = question.lower()
+    
+    calc_keywords = [
+        'порахуй', 'посчитай', 'подсчитай', 'calculate', 'мій коефіцієнт', 'мой коэффициент',
+        'my ratio', 'який коефіцієнт', 'какой коэффициент', 'what ratio', 'what is my ratio',
+        'допомогти вирахувати', 'помочь рассчитать', 'help calculate', 'can you calculate',
+        'можеш порахувати', 'можешь посчитать', 'можеш допомогти', 'можешь помочь',
+        'вирахувати', 'рассчитать', 'calculate for me', 'допомогти', 'помочь',
+        'это норма', 'це норма', 'is this normal', 'is it ok', 'це добре', 'это хорошо'
+    ]
+    
+    is_calc_question = any(kw in q_lower for kw in calc_keywords)
+    
+    has_numbers = bool(re.search(r'\d+', question))
+    has_dislikes = any(kw in q_lower for kw in ['дизлайк', 'dislike', 'дизлайків', 'диз', 'дизов', 'дізів'])
+    has_likes = any(kw in q_lower for kw in ['лайк', 'like', 'лайків', 'лайков', 'лайка'])
+    
+    if is_calc_question or (has_dislikes and has_likes and has_numbers):
+        dislikes, likes = extract_dislike_numbers(question)
+        
+        if dislikes is not None and likes is not None:
+            ratio = calculate_dislike_ratio(dislikes, likes)
+            
+            if ratio < 0.18:
+                status_texts = {
+                    'ru': f'отлично ✅ У тебя всё в порядке!',
+                    'uk': f'чудово ✅ У тебе все гаразд!',
+                    'en': f'excellent ✅ You\'re doing great!'
+                }
+            else:
+                status_texts = {
+                    'ru': f'ОПАСНО ⚠️ Коэффициент выше 0.18 - нужно срочно удалять дизлайки!',
+                    'uk': f'НЕБЕЗПЕЧНО ⚠️ Коефіцієнт вище 0.18 - потрібно терміново видаляти дизлайки!',
+                    'en': f'DANGEROUS ⚠️ Ratio above 0.18 - need to delete dislikes urgently!'
+                }
+            
+            status = status_texts.get(user_lang, status_texts['ru'])
+            
+            answer_texts = {
+                'ru': f'''Твой коэффициент дизлайков: {ratio}
+
+📊 Расчет:
+{dislikes} дизлайков ÷ {likes} лайков = {ratio}
+
+Статус: {status}
+
+💡 Помни: коэффициент должен быть НИЖЕ 0.18!''',
+                'uk': f'''Твій коефіцієнт дизлайків: {ratio}
+
+📊 Розрахунок:
+{dislikes} дизлайків ÷ {likes} лайків = {ratio}
+
+Статус: {status}
+
+💡 Пам'ятай: коефіцієнт має бути НИЖЧЕ 0.18!''',
+                'en': f'''Your dislike ratio: {ratio}
+
+📊 Calculation:
+{dislikes} dislikes ÷ {likes} likes = {ratio}
+
+Status: {status}
+
+💡 Remember: ratio must be BELOW 0.18!'''
+            }
+            
+            return answer_texts.get(user_lang, answer_texts['ru'])
+        
+        elif is_calc_question:
+            # 🔴 ИЗМЕНЕНИЕ 3: Добавлено "за останні 30 днів" в украинском тексте
+            prompt_texts = {
+                'ru': '''Конечно помогу посчитать! 😊
+
+Напиши мне сколько у тебя:
+• Дизлайков
+• Лайков
+
+Например: "30 дизлайков и 200 лайков"
+
+И я сразу посчитаю твой коэффициент и скажу в норме ли он! 📊''',
+                'uk': '''Звичайно допоможу порахувати! 😊
+
+Напиши мені скільки у тебе за останні 30 днів:
+• Дизлайків
+• Лайків
+
+Наприклад: "30 дизлайків і 200 лайків"
+
+І я одразу порахую твій коефіцієнт і скажу чи в нормі він! 📊''',
+                'en': '''Of course I'll help you calculate! 😊
+
+Tell me how many you have:
+• Dislikes
+• Likes
+
+For example: "30 dislikes and 200 likes"
+
+And I'll calculate your ratio and tell you if it's okay! 📊'''
+            }
+            
+            return prompt_texts.get(user_lang, prompt_texts['ru'])
+    
+    return None
+
+# ============ КЛЮЧЕВЫЕ СЛОВА ДЛЯ ПОИСКА (УЛУЧШЕННЫЕ) ============
+
+KNOWLEDGE_KEYWORDS = {
+    'hunting': ['охота', 'hunting', 'хантинг', 'hunt', 'полювання', 'start hunting', 'начать охоту', 'почати полювання'],
+    'multibeam': ['мультибим', 'multibeam', 'multi beam', 'multi-beam', 'multibim', 'мультібім', 'press unit', 'спот', 'spot'],
+    'profile': ['профиль', 'profile', 'профіль', 'аватар', 'avatar', 'обложка', 'cover', 'теги', 'tags', 'настройка профиля', 'налаштування профілю', 'редактир', 'edit profile'],
+    'how_to_post': ['как постить', 'як постити', 'how to post', 'как опубликовать', 'як опублікувати', 'как добавить пост', 'як додати пост', 'как запостить', 'як запостити', 'постить фото', 'постити фото', 'post photo', 'как делать пост', 'як робити пост', 'how to make post', 'как сделать пост', 'як зробити пост'],
+    'posts': ['пост', 'post', 'публикация', 'публікація', 'лента', 'feed', 'posting', 'сколько постов', 'скільки постів', 'how many posts', 'количество постов', 'кількість постів'],
+    
+    'live_stream_start': ['запустить эфир', 'запустити ефір', 'start stream', 'начать эфир', 'почати ефір', 'как запустить', 'як запустити', 'start live', 'launch stream', 'open stream', 'как запустить обычный', 'як запустити звичайний', 'запустить трансляцию', 'запустити трансляцію'],
+    'live_stream_posture': ['как сидеть', 'як сидіти', 'how to sit', 'правильно сидеть', 'правильно сидіти', 'posture', 'поза', 'сидіти в ефірі', 'сидеть в эфире'],
+    
+    'premium_stream': ['что такое премиум', 'що таке преміум', 'what is premium', 'преміум ефір', 'премиум эфир', 'premium stream', 'premium', 'преміум', 'премиум', 'платный эфир', 'платній ефір', 'paid stream'],
+    'premium_stream_start': ['запустить премиум', 'запустити преміум', 'start premium', 'как запустить премиум', 'як запустити преміум', 'how to start premium', 'launch premium'],
+    
+    'live_stream': ['эфир', 'stream', 'ефір', 'прямой эфир', 'live', 'трансляция', 'прямий ефір', 'broadcast'],
+    'rules': ['правила', 'rules', 'правила', 'запрещено', 'forbidden', 'заборонено', 'нельзя', 'можно', 'можна', 'what allowed', 'що дозволено'],
+    'dislikes': ['дизлайк', 'dislike', 'дизлайки', 'коэффициент', 'coefficient', 'коефіцієнт', 'ratio', 'диз', 'дизов'],
+    'dislikes_delete': ['видалити дизлайк', 'удалить дизлайк', 'delete dislike', 'убрать дизлайк', 'прибрати дизлайк', 'как удалить', 'як видалити', 'how to delete'],
+    # 🔴 ИЗМЕНЕНИЕ 4: Расширены ключевые слова для dislike_calculation_help
+    'dislike_calculation_help': ['как высчитать', 'як порахувати', 'how to calculate', 'как посчитать коэффициент', 'як порахувати коефіцієнт', 'высчитать коэффициент', 'порахувати коефіцієнт', 'как мне высчитать', 'як мені порахувати', 'як мені вирахувати', 'как мне рассчитать', 'за 30 дней', 'за 30 днів', 'for 30 days', 'за последние 30', 'за останні 30', 'last 30 days', 'коэффициент за 30', 'коефіцієнт за 30', 'coefficient for 30'],
+    'auto_messages': ['автосообщ', 'auto message', 'автоповідомл', 'mass message', 'массовые', 'масові', 'рассылка', 'розсилка'],
+    'tasks': ['задания', 'tasks', 'завдання', 'центр задач', 'task center', 'виконати завдання', 'выполнить задания'],
+    'translator': ['переводчик', 'translator', 'перекладач', 'translate', 'перевод', 'переклад', 'как переводить', 'як перекладати'],
+    'contract': ['контракт', 'contract', 'эксклюзив', 'exclusive', 'ексклюзив', 'підписати контракт', 'подписать контракт'],
+    'social_media': ['соцсети', 'social media', 'snapchat', 'whatsapp', 'telegram', 'соцмережі', 'передавать соцсети', 'передавати соцмережі'],
+    
+    # EARNINGS - ДОСТУПНО ВСЕМ!
+    'earnings': ['заработок', 'earnings', 'заробіток', 'доход', 'income', 'дохід', 'сколько', 'how much', 'скільки', 'сколько зарабатывают', 'скільки заробляють', 'how much earn', 'сколько можно заработать', 'скільки можна заробити'],
+    
+    'agency': ['агентство', 'agency', 'tosagency', 'агенство', 'какое агентство', 'which agency', 'яке агентство'],
+    'registration': ['регистрация', 'registration', 'реєстрація', 'зарегистр', 'register', 'зареєстр'],
+    'after_registration': ['після реєстрації', 'после регистрации', 'after registration', 'що потрібно робити', 'что нужно делать', 'what to do', 'что делать после', 'що робити після', 'первые шаги', 'перші кроки', 'first steps', 'як почати працювати', 'как начать работать', 'how to start working'],
+}
+
+def find_relevant_knowledge(question, user_lang='ru', is_in_groups=False):
+    """
+    Находит релевантные знания по вопросу с приоритетом точности
+    
+    КРИТИЧЕСКИ ВАЖНО: Если пользователь НЕ в группах (is_in_groups=False),
+    НЕ возвращаем рабочие знания - только про регистрацию и общие вопросы!
+    """
+    q_lower = question.lower()
+    relevant = []
+    matched_categories = set()
+    
+    # 🔴 БЛОКИРОВКА РАБОЧИХ ВОПРОСОВ ДЛЯ НЕ-ЧЛЕНОВ ГРУПП
+    if not is_in_groups:
+        # Список РАЗРЕШЕННЫХ категорий для не-членов групп
+        # EARNINGS добавлен - вопросы о заработке доступны всем!
+        allowed_categories = ['registration', 'agency', 'after_registration', 'earnings']
+        
+        # Проверяем только разрешенные категории
+        for category in allowed_categories:
+            if category in KNOWLEDGE_KEYWORDS:
+                keywords = KNOWLEDGE_KEYWORDS[category]
+                for keyword in keywords:
+                    if keyword in q_lower:
+                        knowledge = HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru'])
+                        for key in knowledge:
+                            if category in key:
+                                relevant.append(knowledge[key])
+                                matched_categories.add(category)
+                                logger.info(f"Matched allowed category for non-member: {category}")
+                                break
+                if category in matched_categories:
+                    break
+        
+        if relevant:
+            return relevant
+        
+        # Если вопрос рабочий, но пользователь не в группах - возвращаем пустой список
+        work_categories = [
+            'hunting', 'multibeam', 'profile', 'posts', 'how_to_post',
+            'live_stream', 'live_stream_start', 'live_stream_posture',
+            'premium_stream', 'premium_stream_start', 'rules',
+            'dislikes', 'dislikes_delete', 'auto_messages', 'tasks',
+            'translator', 'contract', 'social_media'
+        ]
+        
+        for category in work_categories:
+            if category in KNOWLEDGE_KEYWORDS:
+                keywords = KNOWLEDGE_KEYWORDS[category]
+                if any(keyword in q_lower for keyword in keywords):
+                    logger.warning(f"Work question from non-member blocked: {category}")
+                    return []
+        
+        return []
+    
+    # Для членов групп - обычная логика
+    
+    # ПРИОРИТЕТ 1: Самые специфичные категории
+    specific_checks = [
+        ('how_to_post', KNOWLEDGE_KEYWORDS['how_to_post']),
+        ('premium_stream_start', KNOWLEDGE_KEYWORDS['premium_stream_start']),
+        ('premium_stream', KNOWLEDGE_KEYWORDS['premium_stream']),
+        ('live_stream_start', KNOWLEDGE_KEYWORDS['live_stream_start']),
+        ('live_stream_posture', KNOWLEDGE_KEYWORDS['live_stream_posture']),
+        ('dislike_calculation_help', KNOWLEDGE_KEYWORDS['dislike_calculation_help']),
+        ('dislikes_delete', KNOWLEDGE_KEYWORDS['dislikes_delete']),
+        ('after_registration', KNOWLEDGE_KEYWORDS['after_registration']),
+        ('earnings', KNOWLEDGE_KEYWORDS['earnings']),
+    ]
+    
+    for category, keywords in specific_checks:
+        for keyword in keywords:
+            if keyword in q_lower:
+                knowledge = HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru'])
+                if category in knowledge:
+                    relevant.append(knowledge[category])
+                    matched_categories.add(category)
+                    logger.info(f"Matched specific category: {category} for keyword: {keyword}")
+                break
+        if category in matched_categories:
+            break
+    
+    if relevant:
+        return relevant
+    
+    # ПРИОРИТЕТ 2: Остальные категории
+    for category, keywords in KNOWLEDGE_KEYWORDS.items():
+        if category in matched_categories:
+            continue
+        
+        for keyword in keywords:
+            if keyword in q_lower:
+                knowledge = HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru'])
+                for key, value in knowledge.items():
+                    if category in key or keyword in key:
+                        relevant.append(value)
+                        logger.info(f"Matched general category: {category} for keyword: {keyword}")
+                break
+    
+    return relevant
+
+
+def find_relevant_materials(question, materials, max_results=3):
+    """Находит наиболее релевантные материалы по вопросу"""
+    if not materials:
+        return []
+    
+    question_lower = question.lower()
+    scored_materials = []
+    
+    for material in materials:
+        content = material.get('text') or material.get('transcription', '')
+        if not content:
+            continue
+        
+        content_lower = content.lower()
+        score = 0
+        
+        question_words = [w for w in question_lower.split() if len(w) > 3]
+        
+        for word in question_words:
+            if word in content_lower:
+                score += content_lower.count(word) * 2
+        
+        for category, keywords in KNOWLEDGE_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in question_lower and keyword in content_lower:
+                    score += 10
+        
+        if score > 0:
+            scored_materials.append((score, material, content))
+    
+    scored_materials.sort(key=lambda x: x[0], reverse=True)
+    
+    return [(m, c) for _, m, c in scored_materials[:max_results]]
+
+
+COUNTRY_KEYWORDS = [
+    'азербайджан', 'azerbaijan',
+    'казахстан', 'kazakhstan',
+    'грузия', 'georgia',
+    'беларусь', 'belarus',
+    'молдова', 'moldova',
+    'армения', 'armenia',
+    'узбекистан', 'uzbekistan',
+    'туркменистан', 'turkmenistan',
+    'таджикистан', 'tajikistan',
+    'кыргызстан', 'kyrgyzstan',
+    'латвия', 'латва', 'latvia',
+    'литва', 'lithuania',
+    'эстония', 'estonia',
+    'польша', 'poland',
+    'германия', 'germany',
+    'франция', 'france',
+    'италия', 'italy',
+    'испания', 'spain',
+    'турция', 'turkey',
+    'израиль', 'israel',
+    'финляндия', 'finland',
+    'швеция', 'sweden',
+    'норвегия', 'norway',
+    'дания', 'denmark',
+    'швейцария', 'switzerland',
+    'австрия', 'austria',
+    'бельгия', 'belgium',
+    'нидерланды', 'netherlands',
+    'греция', 'greece',
+    'чехия', 'czech',
+    'венгрия', 'hungary',
+    'румыния', 'romania',
+    'болгария', 'bulgaria',
+    'сербия', 'serbia',
+    'хорватия', 'croatia',
+    'словакия', 'slovakia',
+    'словения', 'slovenia',
+    'эаэ', 'оае', 'uae',
+    'сша', 'usa',
+    'канада', 'canada',
+    'австралия', 'australia',
+    'япония', 'japan',
+    'китай', 'china',
+    'индия', 'india',
+    'бразилия', 'brazil',
+    'мексика', 'mexico',
+    'аргентина', 'argentina',
+    'южная корея', 'south korea',
+    'иран', 'iran',
+    'ирак', 'iraq',
+    'саудовская', 'saudi',
+    'кувейт', 'kuwait',
+    'катар', 'qatar',
+    'бахрейн', 'bahrain',
+    'оман', 'oman',
+    'україна', 'україна', 'ukraine',
+    'россия', 'russia',
+]
+
+def detect_country_in_text(text):
+    text_lower = text.lower()
+    for country in COUNTRY_KEYWORDS:
+        if country in text_lower:
+            return country
+    return None
+
+def is_g4f_error(content):
+    if not content:
+        return True
+    c = content.lower()
+    if 'does not exist' in c:
+        return True
+    if 'the model does not' in c:
+        return True
+    if 'model' in c and 'exist' in c:
+        return True
+    if c.startswith('error'):
+        return True
+    if 'api.airforce' in c:
+        return True
+    if 'bad request' in c:
+        return True
+    if len(content.strip()) < 3:
+        return True
+    return False
+
+async def check_forbidden_topics(message):
+    msg_lower = message.lower()
+    topics = await get_forbidden_topics_from_db()
+    
+    for topic in topics:
+        keywords = json.loads(topic['keywords'])
+        for keyword in keywords:
+            if keyword.lower() in msg_lower:
+                return True
+    return False
+
+async def build_context_prompt(user_id, question, is_in_groups=False):
+    from database.analysis import get_all_analysis_texts, get_all_analysis_audios, get_all_analysis_videos
+    
+    user = await get_user(user_id)
+    history = await get_messages(user_id, limit=15)
+    
+    user_lang = user['language'] if user and user['language'] else 'ru'
+    
+    relevant_knowledge = find_relevant_knowledge(question, user_lang, is_in_groups)
+    
+    status = user['status']
+    if status in ['new', 'chatting', 'waiting_photos', 'asking_work_hours', 'asking_experience']:
+        category = 'new'
+    elif status in ['helping_registration', 'waiting_screenshot']:
+        category = 'registration'
+    elif status in ['registered', 'approved']:
+        category = 'working'
+    else:
+        category = 'new'
+    
+    faq_ru = await get_faq(category=category)
+    faq_all = await get_faq()
+    learning = await get_ai_learning()
+    
+    history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
+    
+    faq_text = "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq_ru[:30]])
+    faq_text += "\n\n=== ДОПОЛНИТЕЛЬНЫЕ ВОПРОСЫ (ВСЕ ЯЗЫКИ) ===\n"
+    faq_text += "\n".join([f"Q: {f['question']}\nA: {f['answer']}" for f in faq_all[:50]])
+    
+    learning_text = "\n".join([f"Q: {l['question']}\nA: {l['answer']} (confidence: {l['confidence']})" for l in learning[:10]])
+    
+    if is_in_groups:
+        group_status = "✅ ЕСТЬ В ГРУППАХ - можешь отвечать на ВСЕ рабочие вопросы"
+    else:
+        group_status = "❌ НЕТ В ГРУППАХ - отвечай ТОЛЬКО на вопросы о РЕГИСТРАЦИИ и ЗАРАБОТКЕ"
+    
+    last_messages = history[-5:] if len(history) >= 5 else history
+    recent_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in last_messages])
+    
+    knowledge_section = ""
+    if relevant_knowledge:
+        knowledge_section = f"\n\n=== СПЕЦИАЛЬНЫЕ ЗНАНИЯ ПО ВОПРОСУ ===\n"
+        knowledge_section += "\n\n".join(relevant_knowledge[:5])
+        knowledge_section += "\n⚠️ ИСПОЛЬЗУЙ ЭТИ ЗНАНИЯ ДЛЯ ОТВЕТА!\n"
+    
+    training_materials = ""
+    
+    if is_in_groups:
+        texts_all = await get_all_analysis_texts(lang=user_lang)
+        audios_all = await get_all_analysis_audios(lang=user_lang)
+        videos_all = await get_all_analysis_videos(lang=user_lang)
+        
+        relevant_texts = find_relevant_materials(question, texts_all, max_results=5)
+        relevant_audios = find_relevant_materials(question, audios_all, max_results=3)
+        relevant_videos = find_relevant_materials(question, videos_all, max_results=3)
+        
+        if relevant_texts or relevant_audios or relevant_videos:
+            training_materials = f"\n\n=== РЕЛЕВАНТНЫЕ ОБУЧАЮЩИЕ МАТЕРИАЛЫ (доступны т.к. пользователь В ГРУППАХ) ===\n"
+            training_materials += "⚠️ ЭТИ МАТЕРИАЛЫ СПЕЦИАЛЬНО ОТОБРАНЫ ПО ТВОЕМУ ВОПРОСУ - ИСПОЛЬЗУЙ ИХ!\n\n"
+            
+            if relevant_texts:
+                training_materials += "=== РЕЛЕВАНТНЫЕ ТЕКСТОВЫЕ ИНСТРУКЦИИ ===\n"
+                for i, (text, content) in enumerate(relevant_texts, 1):
+                    training_materials += f"\n--- Документ {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:2000]}\n"
+            
+            if relevant_audios:
+                training_materials += "\n=== РЕЛЕВАНТНЫЕ АУДИО МАТЕРИАЛЫ ===\n"
+                for i, (audio, content) in enumerate(relevant_audios, 1):
+                    training_materials += f"\n--- Аудио {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
+            
+            if relevant_videos:
+                training_materials += "\n=== РЕЛЕВАНТНЫЕ ВИДЕО МАТЕРИАЛЫ ===\n"
+                for i, (video, content) in enumerate(relevant_videos, 1):
+                    training_materials += f"\n--- Видео {i} (РЕЛЕВАНТНЫЙ) ---\n{content[:1500]}\n"
+    
+    lang_names = {'ru': 'РУССКОМ', 'uk': 'УКРАЇНСЬКОЮ', 'en': 'ENGLISH'}
+    lang_name = lang_names.get(user_lang, 'РУССКОМ')
+    
+    lang_reminders = {
+        'ru': '⚠️ ЯЗЫК ОТВЕТА: ТОЛЬКО РУССКИЙ! Никаких других языков!',
+        'uk': '⚠️ МОВА ВІДПОВІДІ: ТІЛЬКИ УКРАЇНСЬКА! Жодних інших мов!',
+        'en': '⚠️ RESPONSE LANGUAGE: ONLY ENGLISH! No other languages!'
+    }
+    lang_reminder = lang_reminders.get(user_lang, lang_reminders['ru'])
+    
+    not_in_groups_warning = ""
+    if not is_in_groups:
+        not_in_groups_warning = f"""
+🔴🔴🔴 КРИТИЧЕСКИ ВАЖНО 🔴🔴🔴
+ПОЛЬЗОВАТЕЛЬ НЕ В ГРУППАХ!
+ТЫ МОЖЕШЬ ОТВЕЧАТЬ ТОЛЬКО НА ВОПРОСЫ О:
+✅ РЕГИСТРАЦИИ
+✅ ЗАРАБОТКЕ (сколько платят, как зарабатывают)
+
+НЕ ОТВЕЧАЙ на вопросы про:
+❌ эфиры, стримы, трансляции (премиум или обычные)
+❌ как работать
+❌ правила работы
+❌ дизлайки, охоту, мультибимы
+❌ посты, профиль (кроме создания при регистрации)
+❌ автосообщения, задания
+
+Если спрашивают о работе - скажи:
+"{get_not_in_groups_message(user_lang)}"
+
+ЭСКАЛИРУЙ (escalate: true) на любые рабочие вопросы!
+🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴
+"""
+    
+    context_prompt = f"""
+СТАТУС ПОЛЬЗОВАТЕЛЯ: {user['status']}
+СТАТУС УЧАСТИЯ: {group_status}
+{not_in_groups_warning}
+
+🔴🔴🔴 КРИТИЧЕСКИ ВАЖНО 🔴🔴🔴
+ЯЗЫК ПОЛЬЗОВАТЕЛЯ: {lang_name}
+{lang_reminder}
+ТЫ ОБЯЗАН ОТВЕЧАТЬ ТОЛЬКО НА ЯЗЫКЕ {lang_name}!
+ЕСЛИ ОТВЕТИШЬ НА ДРУГОМ ЯЗЫКЕ - ЭТО ОШИБКА!
+🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴
+
+КАК ИСКАТЬ ОТВЕТ:
+
+1. Сначала смотри ПОСЛЕДНИЕ 5 СООБЩЕНИЙ - если ответ там, используй с confidence 90-95:
+{recent_context}
+
+2. Если ответа нет в последних сообщениях, смотри СПЕЦИАЛЬНЫЕ ЗНАНИЯ:
+{knowledge_section}
+
+3. Если нет в знаниях, смотри FAQ И ПРАВИЛА:
+{faq_text}
+
+4. Если нет в FAQ, смотри ОБУЧАЮЩИЕ МАТЕРИАЛЫ (ТОЛЬКО если пользователь В ГРУППАХ):
+{training_materials}
+
+5. Если нигде нет ответа - эскалируй (escalate: true, confidence < 70)
+
+ПОЛНАЯ ИСТОРИЯ ДИАЛОГА:
+{history_text}
+
+ОБУЧЕННЫЕ ОТВЕТЫ:
+{learning_text}
+
+ТЕКУЩИЙ ВОПРОС:
+{question}
+
+ПРАВИЛА ОТВЕТА:
+- 🔴 САМОЕ ВАЖНОЕ: Отвечай ТОЛЬКО на языке {lang_name}!
+- 🔴 НЕ СМЕШИВАЙ языки! Весь ответ должен быть на {lang_name}!
+- 🔴 Даже если вопрос на другом языке - отвечай ТОЛЬКО на {lang_name}!
+- 🔴 НЕ ПОВТОРЯЙ один и тот же ответ на разные вопросы!
+- 🔴 Если вопрос уточняющий - дай УТОЧНЯЮЩИЙ ответ, НЕ копируй предыдущий!
+- Простые эмоции (ок, супер, класс, добре) - confidence 95+, БЕЗ эскалации
+- ЛЮБАЯ СТРАНА ПОДХОДИТ для работы
+- Ответ КРАТКИЙ (до 200 слов)
+- БЕЗ markdown (без *, _, **)
+- Стиль менеджера Valencia (дружелюбный, эмодзи)
+- Используй найденную информацию, но ПЕРЕФОРМУЛИРУЙ своими словами
+- Не копируй текст один в один - объясни понятно и по-человечески
+
+ФОРМАТ ОТВЕТА JSON:
+{{
+  "answer": "твой дружелюбный ответ НА ЯЗЫКЕ {lang_name}",
+  "confidence": 0-100,
+  "escalate": true/false
+}}
+
+🔴 ПОСЛЕДНЕЕ НАПОМИНАНИЕ: Ответ должен быть ПОЛНОСТЬЮ на языке {lang_name}!
+"""
+    
+    return context_prompt
+
+def get_not_in_groups_message(user_lang='ru'):
+    """Возвращает сообщение для пользователей не в группах на их языке"""
+    messages = {
+        'ru': 'Ты пока что не прошла регистрацию. Как только закончишь регистрацию и тебя добавят в группы, у тебя будет открыт доступ к обучению и я смогу ответить на все твои вопросы о работе! 😊',
+        'uk': 'Ти поки що не пройшла реєстрацію. Як тільки закінчиш реєстрацію і тебе додадуть у групи, у тебе буде відкритий доступ до навчання і я зможу відповісти на всі твої питання про роботу! 😊',
+        'en': "You haven't completed registration yet. Once you finish registration and get added to the groups, you'll have access to training and I'll be able to answer all your work questions! 😊"
+    }
+    return messages.get(user_lang, messages['ru'])
+
+async def check_faq_direct_match(question, user_lang='ru'):
+    q_lower = question.lower().strip()
+    
+    # ===== НОВАЯ ПРОВЕРКА: Прямые ответы на популярные вопросы =====
+    
+    # 1. КАК ЗАПУСТИТЬ ЭФИР
+    launch_stream_keywords = {
+        'ru': ['как запустить эфир', 'как запустить трансляцию', 'запустить стрим', 'начать эфир'],
+        'uk': ['як запустити ефір', 'як запустити трансляцію', 'запустити стрім', 'почати ефір'],
+        'en': ['how to start stream', 'how to launch stream', 'start streaming', 'begin stream']
+    }
+    
+    for lang, keywords in launch_stream_keywords.items():
+        if any(kw in q_lower for kw in keywords):
+            return HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru']).get('live_stream_start')
+    
+    # 2. ЗАРАБОТКИ
+    earnings_keywords = {
+        'ru': ['сколько зарабатывают', 'сколько можно заработать', 'какой заработок'],
+        'uk': ['скільки заробляють', 'скільки можна заробити', 'який заробіток'],
+        'en': ['how much earn', 'how much can i earn', 'what are earnings']
+    }
+    
+    for lang, keywords in earnings_keywords.items():
+        if any(kw in q_lower for kw in keywords):
+            return HALO_TRAINING_KNOWLEDGE.get(user_lang, HALO_TRAINING_KNOWLEDGE['ru']).get('earnings_info')
+    
+    # ===== СТАРЫЕ ПРОВЕРКИ =====
+    
+    relevant_knowledge = find_relevant_knowledge(question, user_lang, is_in_groups=True)
+    if relevant_knowledge and len(q_lower.split()) <= 15:
+        return relevant_knowledge[0]
+    
+    agency_keywords = [
+        'which agency', 'what agency', 'agency name', 'which one',
+        'яке агентство', 'какое агентство', 'назва агентства', 'название агентства',
+        'яке обрати', 'какое выбрать', 'which to choose', 'which should i choose',
+        'tosagency', 'агентств', 'agency', 'агентство', 'агенство',
+        'яке', 'какое', 'which', 'what is agency', 'what agency name'
+    ]
+    
+    is_agency_question = False
+    for kw in agency_keywords:
+        if kw in q_lower:
+            is_agency_question = True
+            break
+    
+    if not is_agency_question:
+        agency_words_count = sum(1 for word in ['agency', 'агентств', 'агентство', 'агенство', 'яке', 'какое', 'which'] if word in q_lower)
+        if agency_words_count > 0 and len(q_lower.split()) <= 4:
+            is_agency_question = True
+    
+    if is_agency_question:
+        responses = {
+            'ru': 'В разделе Агентство выбирай: Tosagency-Ukraine 😊',
+            'uk': 'У розділі Агентство обирай: Tosagency-Ukraine 😊',
+            'en': 'In the Agency section choose: Tosagency-Ukraine 😊'
+        }
+        return responses.get(user_lang, responses['ru'])
+    
+    video_photo_keywords = [
+        'can i send video', 'video instead', 'відео замість', 'видео вместо',
+        'можу відео', 'могу видео', 'відправити відео', 'отправить видео'
+    ]
+    
+    if any(kw in q_lower for kw in video_photo_keywords):
+        responses = {
+            'ru': 'Нужны именно фото, не видео 📸 Пришли 2-3 фото хорошего качества, чтобы было чётко видно лицо 😊',
+            'uk': 'Потрібні саме фото, не відео 📸 Надішли 2-3 фото хорошої якості, щоб було чітко видно обличчя 😊',
+            'en': 'We need photos, not videos 📸 Send 2-3 good quality photos with your face clearly visible 😊'
+        }
+        return responses.get(user_lang, responses['ru'])
+    
+    country = detect_country_in_text(q_lower)
+    if country:
+        country_display = country.capitalize()
+        responses = {
+            'ru': f"У нас работают девочки со всех стран! {country_display} подходит ✅ При регистрации можешь выбрать любую страну 😊",
+            'uk': f"У нас працюють дівчата з усіх країн! {country_display} підходить ✅ При реєстрації можешь вибрати будь-яку країну 😊",
+            'en': f"We have girls working from all countries! {country_display} works perfectly ✅ During registration you can choose any country 😊"
+        }
+        return responses.get(user_lang, responses['ru'])
+    
+    detailed_info = {
+        'ru': """Приветик 😊
+
+🌟 РАБОТА СТРИМ-МОДЕЛЬЮ В ПРИЛОЖЕНИИ HALO 🌟
+
+💬 Заработок на общении, прямых эфирах и приватных видеозвонках с мужчинами
+📞 1 минута общения = 1$
+💳 Комиссия агентства — 20%
+👉 Чистый доход: 0.8$ за минуту
+
+💰 Примеры заработка в звонках:
+— 5 минут общения = 5$ → 4$ чистыми
+— 10 минут = 10$ → 8$ чистыми
+— 30 минут = 30$ → 24$ чистыми
+— 1 час звонков = 60$ → 48$ чистыми
+
+💵 От 50$ в день при активной работе
+
+🌍 Аудитория: США, Европа, Англия, ОАЭ, арабские страны
+👨‍💼 Многие мужчины приходят именно за общением, а не за 🔞
+🌐 Встроенный переводчик — английский не обязателен
+🕒 Свободный график — работаешь, когда удобно
+
+🎤 В открытых эфирах — только культурное общение
+Можно танцевать, петь, общаться, слушать музыку
+💎 Важно выглядеть опрятно и презентабельно
+❌ Никакой эротики и откровенной одежды — за нарушение бан
+
+📞 В приватных звонках формат общения может быть любым — по взаимному согласию
+— Каждая минута оплачивается
+— Можно получать подарки
+— Переводчик работает и в звонках
+— Вас никто не слышит, кроме собеседника
+
+📤 Вывод средств:
+— Самостоятельно
+— Срок: 1–3 дня
+— Есть видео-инструкция, как вывести деньги на карту или крипту
+— Если возникают сложности — помогаем с выводом
+
+📸 Как начать:
+Пришли 2–3 фото
+— хорошее качество
+— чётко видно лицо
+(фото только для внутреннего одобрения)
+
+⚠️ Важно:
+🔹 Первые 7 дней — тестовый период
+🔹 Нужно заработать 100$
+🔹 У каждой девушки есть только одна возможность создать аккаунт. Если аккаунт блокируют — новый создать нельзя, поэтому выделяйте максимум времени для работы
+🚀 Новеньких активно продвигают
+❌ Тест не пройден — аккаунт блокируется
+
+Если формат подходит — жду фото 👋""",
+        'uk': """Привітик 😊
+
+🌟 РОБОТА СТРІМ-МОДЕЛЛЮ В ЗАСТОСУНКУ HALO 🌟
+
+💬 Заробіток на спілкуванні, прямих ефірах та приватних відеодзвінках з чоловіками
+📞 1 хвилина спілкування = 1$
+💳 Комісія агентства — 20%
+👉 Чистий дохід: 0.8$ за хвилину
+
+💰 Приклади заробітку в дзвінках:
+— 5 хвилин спілкування = 5$ → 4$ чистими
+— 10 хвилин = 10$ → 8$ чистими
+— 30 хвилин = 30$ → 24$ чистими
+— 1 година дзвінків = 60$ → 48$ чистими
+
+💵 Від 50$ на день при активній роботі
+
+🌍 Аудиторія: США, Європа, Англія, ОАЕ, арабські країни
+👨‍💼 Багато чоловіків приходять саме за спілкуванням, а не за 🔞
+🌐 Вбудований перекладач — англійська не обов'язкова
+🕒 Вільний графік — працюєш, коли зручно
+
+🎤 У відкритих ефірах — тільки культурне спілкування
+Можна танцювати, співати, спілкуватися, слухати музику
+💎 Важливо виглядати охайно і презентабельно
+❌ Ніякої еротики та відвертого одягу — за порушення бан
+
+📞 У приватних дзвінках формат спілкування може бути будь-яким — за взаємною згодою
+— Кожна хвилина оплачується
+— Можна отримувати подарунки
+— Перекладач працює і в дзвінках
+— Вас ніхто не чує, крім співрозмовника
+
+📤 Виведення коштів:
+— Самостійно
+— Термін: 1–3 дні
+— Є відео-інструкція, як вивести гроші на карту або крипту
+— Якщо виникають складнощі — допомагаємо з виведенням
+
+📸 Як почати:
+Надішли 2–3 фото
+— хороша якість
+— чітко видно обличчя
+(фото тільки для внутрішнього схвалення)
+
+⚠️ Важливо:
+🔹 Перші 7 днів — тестовий період
+🔹 Потрібно заробити 100$
+🔹 У кожної дівчини є тільки одна можливість створити акаунт. Якщо акаунт блокують — новий створити не можна, тому виділяйте максимум часу для роботи
+🚀 Новеньких активно просувають
+❌ Тест не пройдено — акаунт блокується
+
+Якщо формат підходить — чекаю фото 👋""",
+        'en': """Hello 😊
+
+🌟 WORK AS A STREAM MODEL IN HALO APP 🌟
+
+💬 Earn from chatting, live streams and private video calls with men
+📞 1 minute of communication = 1$
+💳 Agency commission — 20%
+👉 Net income: 0.8$ per minute
+
+💰 Examples of earnings in calls:
+— 5 minutes of communication = 5$ → 4$ net
+— 10 minutes = 10$ → 8$ net
+— 30 minutes = 30$ → 24$ net
+— 1 hour of calls = 60$ → 48$ net
+
+💵 From 50$ per day with active work
+
+🌍 Audience: USA, Europe, England, UAE, Arab countries
+👨‍💼 Many men come for communication, not for 🔞
+🌐 Built-in translator — English is not required
+🕒 Free schedule — work when convenient
+
+🎤 In open streams — only cultural communication
+You can dance, sing, chat, listen to music
+💎 Important to look neat and presentable
+❌ No erotica and revealing clothing — violation = ban
+
+📞 In private calls the format can be anything — by mutual consent
+— Every minute is paid
+— Can receive gifts
+— Translator works in calls
+— Nobody hears you except the interlocutor
+
+📤 Withdrawal of funds:
+— Independently
+— Period: 1–3 days
+— There is a video instruction on how to withdraw money to card or crypto
+— If there are difficulties — we help with withdrawal
+
+📸 How to start:
+Send 2–3 photos
+— good quality
+— face clearly visible
+(photos only for internal approval)
+
+⚠️ Important:
+🔹 First 7 days — trial period
+🔹 Need to earn 100$
+🔹 Each girl has only one opportunity to create an account. If account is blocked — cannot create new one, so dedicate maximum time to work
+🚀 Newbies are actively promoted
+❌ Test not passed — account is blocked
+
+If the format suits — waiting for photos 👋"""
+    }
+    
+    simple_reactions = {
+        'ок': ('Отлично! 😊', 'Чудово! 😊', 'Great! 😊'),
+        'окей': ('Супер! 👍', 'Супер! 👍', 'Perfect! 👍'),
+        'хорошо': ('Отлично! 😊', 'Чудово! 😊', 'Excellent! 😊'),
+        'добре': ('Чудово! 😊', 'Чудово! 😊', 'Great! 😊'),
+        'понятно': ('Супер! 😊', 'Супер! 😊', 'Great! 😊'),
+        'зрозуміло': ('Добре! 😊', 'Добре! 😊', 'Good! 😊'),
+        'класс': ('Рада помочь! 😊', 'Рада допомогти! 😊', 'Happy to help! 😊'),
+        'супер': ('👍', '👍', '👍'),
+        'круто': ('🔥', '🔥', '🔥'),
+        'отлично': ('💪', '💪', '💪'),
+        'ясно': ('👌', '👌', '👌'),
+        'чудово': ('😊', '😊', '😊'),
+        'fine': ('Отлично! 😊', 'Чудово! 😊', 'Great! 😊'),
+        'okay': ('Супер! 👍', 'Супер! 👍', 'Perfect! 👍'),
+        'ok': ('Отлично! 😊', 'Чудово! 😊', 'Great! 😊'),
+        'good': ('Супер! 😊', 'Супер! 😊', 'Nice! 😊'),
+        'great': ('Отлично! 🔥', 'Чудово! 🔥', 'Awesome! 🔥'),
+        'nice': ('👍', '👍', '👍'),
+        'cool': ('😊', '😊', '😊')
+    }
+    
+    for reaction, responses in simple_reactions.items():
+        if q_lower == reaction:
+            lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(user_lang, 0)
+            return responses[lang_index]
+    
+    faq_direct = {
+        'привет': ('Привет! Чем могу помочь? 😊', 'Привіт! Чим можу допомогти? 😊', 'Hi! How can I help? 😊'),
+        'здравствуй': ('Здравствуй! Рада тебя видеть! Есть вопросы? 😊', 'Вітаю! Рада тебе бачити! Є питання? 😊', 'Hello! Nice to see you! Any questions? 😊'),
+        'вітаю': ('Вітаю! Чим можу допомогти? 😊', 'Вітаю! Чим можу допомогти? 😊', 'Hi! How can I help? 😊'),
+        'привіт': ('Привіт! Є питання? 😊', 'Привіт! Є питання? 😊', 'Hi! Any questions? 😊'),
+        'як дела': ('Чудово! А у тебя як? 😊', 'Чудово! А у тебе як? 😊', 'Great! How are you? 😊'),
+        'как дела': ('Отлично! У тебя как? 😊', 'Чудово! А у тебе як? 😊', 'Great! How are you? 😊'),
+        'кто ты': ('Я менеджер агентства Valencia, помогаю девочкам начать работу в Halo 😊', 'Я менеджер агентства Valencia, допомагаю дівчатам почати роботу в Halo 😊', "I'm a Valencia agency manager, helping girls start working in Halo 😊"),
+        'спасибо': ('Пожалуйста! 😊', 'Будь ласка! 😊', "You're welcome! 😊"),
+        'дякую': ('Будь ласка! 😊', 'Будь ласка! 😊', "You're welcome! 😊"),
+        'thanks': ('Пожалуйста! 😊', 'Будь ласка! 😊', "You're welcome! 😊"),
+        'hi': ('Hi! How can I help? 😊', 'Привіт! Чим можу допомогти? 😊', 'Hi! How can I help? 😊'),
+        'hello': ('Hello! How can I help? 😊', 'Привіт! Чим можу допомогти? 😊', 'Hello! How can I help? 😊')
+    }
+    
+    for key, answers in faq_direct.items():
+        if key in q_lower or q_lower in key:
+            lang_index = {'ru': 0, 'uk': 1, 'en': 2}.get(user_lang, 0)
+            return answers[lang_index]
+    
+    detailed_keywords = [
+        'подробнее', 'больше информации', 'расскажи подробнее', 
+        'детальніше', 'більше інформації', 'розкажи детальніше', 
+        'more details', 'more information', 'tell me more'
+    ]
+    
+    if any(kw in q_lower for kw in detailed_keywords):
+        return detailed_info.get(user_lang, detailed_info['ru'])
+    
+    waiting_keywords = [
+        'просто ждать', 'мне просто ждать', 'мне ждать', 'просто жду', 'и все', 'теперь жду', 
+        'просто чекати', 'мені чекати', 'просто чекаю', 'і все', 'тепер чекаю',
+        'just wait', 'should i wait', 'wait now'
+    ]
+    
+    if any(kw in q_lower for kw in waiting_keywords):
+        responses = {
+            'ru': 'Да, просто жди 😊 Активация обычно происходит на следующий будний день. Как только активируют — сможешь начать зарабатывать! 💪',
+            'uk': 'Так, просто чекай 😊 Активація зазвичай відбувається наступного робочого дня. Як тільки активують — зможеш почати заробляти! 💪',
+            'en': 'Yes, just wait 😊 Activation usually happens the next business day. Once activated — you can start earning! 💪'
+        }
+        return responses.get(user_lang, responses['ru'])
+    
+    return None
+
+async def is_contextual_question(question, history):
+    q_lower = question.lower().strip()
+    
+    # РАСШИРЕННЫЙ список вариантов "что делать"
+    what_to_do_variants = [
+        # Русский
+        'що мені робити', 'что мне делать', 'що робити', 'что делать',
+        'що мені', 'что мне', 'що далі', 'что дальше', 
+        'що тепер', 'что теперь', 'що зараз', 'что сейчас',
+        'что нужно делать', 'що потрібно робити', 'що потрібно зробити',
+        'что нужно сделать', 'що треба робити', 'что надо делать',
+        
+        # Українська
+        'що мені робити зараз', 'що робити далі', 'що робити тепер',
+        'що треба зробити', 'що потрібно',
+        
+        # English
+        'what should i do', 'what now', 'what next', 'what to do', 'what i need to do',
+        'what do i need', 'what should i', 'what to do next', 'what do i do',
+        
+        # Короткие варианты
+        'і що', 'и что', 'а що', 'а what', 'а тепер', 'а теперь',
+        'okay, what', 'ok, what', 'so what', 'okay what', 'and what',
+        'що ж', 'что ж', 'ну що', 'ну что', 'і що далі', 'и что дальше'
+    ]
+    
+    if not any(variant in q_lower for variant in what_to_do_variants):
+        return None
+    
+    if not history or len(history) < 2:
+        return None
+    
+    last_bot_messages = []
+    count = 0
+    for msg in reversed(history):
+        if msg['role'] == 'bot' and count < 3:
+            last_bot_messages.append(msg['content'].lower())
+            count += 1
+    
+    if not last_bot_messages:
+        return None
+    
+    photo_request_keywords = [
+        'send 2-3 photos', 'send 2–3 photos', 'пришли 2-3 фото', 'пришли 2–3 фото',
+        'надішли 2-3 фото', 'надішли 2–3 фото', 'waiting for photos', 'жду фото', 'чекаю фото',
+        'how to start', 'як почати', 'как начать', 'if the format suits',
+        'пришли мне фото', 'надішли мені фото', 'send me photos'
+    ]
+    
+    instructions_keywords = [
+        'інструкц', 'инструкц', 'instruction',
+        'реєстр', 'регистр', 'registr',
+        'надішли', 'пришли', 'send',
+        'скрин', 'screenshot',
+        'активуют', 'активують', 'activate',
+        'офіс', 'офис', 'office',
+        'тестовий період', 'тестовый період',
+        'заробити', 'заработать'
+    ]
+    
+    user = await get_user(history[0]['user_id']) if history else None
+    user_lang = user['language'] if user else 'ru'
+    
+    for bot_msg in last_bot_messages:
+        if any(kw in bot_msg for kw in photo_request_keywords):
+            return {
+                'ru': 'Пришли мне 2-3 своих фото (хорошего качества, чтобы было чётко видно лицо) 📸',
+                'uk': 'Надішли мені 2-3 свої фото (хорошої якості, щоб було чітко видно обличчя) 📸',
+                'en': 'Send me 2-3 photos of yourself (good quality, face clearly visible) 📸'
+            }.get(user_lang, 'Пришли мне 2-3 своих фото (хорошего качества, чтобы было чётко видно лицо) 📸')
+        
+        if 'фото' in bot_msg and ('тільки для' in bot_msg or 'только для' in bot_msg or 'only for' in bot_msg):
+            return {
+                'ru': 'Нужно отправить мне 2-3 своих фото. После этого я отправлю их на рассмотрение офису 😊',
+                'uk': 'Потрібно надіслати мені 2-3 свої фото. Після цього я відправлю їх на розгляд офісу 😊',
+                'en': 'You need to send me 2-3 photos of yourself. After that I will send them for office review 😊'
+            }.get(user_lang, 'Нужно отправить мне 2-3 своих фото. После этого я отправлю их на рассмотрение офису 😊')
+        
+        if any(kw in bot_msg for kw in instructions_keywords):
+            if 'скрин' in bot_msg or 'screenshot' in bot_msg or 'офіс' in bot_msg or 'офис' in bot_msg:
+                return {
+                    'ru': 'Просто жди активации от офиса. Обычно это происходит на следующий будний день. Как только активируют — сможешь начать работать! 😊',
+                    'uk': 'Просто чекай активації від офісу. Зазвичай це відбувається наступного робочого дня. Як тільки активують — зможеш почати працювати! 😊',
+                    'en': 'Just wait for activation from the office. Usually it happens the next business day. Once activated — you can start working! 😊'
+                }.get(user_lang, 'Просто жди активации от офиса. Обычно это происходит на следующий будний день. Как только активируют — сможешь начать работать! 😊')
+            else:
+                return {
+                    'ru': 'Следуй инструкциям выше шаг за шагом. Если что-то непонятно на конкретном шаге — спрашивай! 😊',
+                    'uk': 'Дотримуйся інструкцій вище крок за кроком. Якщо щось незрозуміло на конкретному кроці — питай! 😊',
+                    'en': 'Follow the instructions above step by step. If something is unclear at a specific step — ask! 😊'
+                }.get(user_lang, 'Следуй инструкциям выше шаг за шагом. Если что-то непонятно на конкретном шаге — спрашивай! 😊')
+    
+    return None
+
+async def get_ai_response_with_retry(user_id, question, max_retries=3, is_in_groups=False):
+    logger.info(f"Starting AI request for user {user_id}")
+    
+    user = await get_user(user_id)
+    user_lang = user['language'] if user and user['language'] else 'ru'
+    
+    # 🔴 ПРОВЕРКА - блокируем рабочие вопросы для не-членов групп
+    # КРОМЕ вопросов о заработках!
+    if not is_in_groups:
+        q_lower = question.lower()
+        
+        # Список категорий, которые БЛОКИРУЮТСЯ для не-членов
+        # earnings НЕТ в этом списке - вопросы о заработке доступны всем!
+        work_categories = [
+            'hunting', 'multibeam', 'profile', 'posts', 'how_to_post',
+            'live_stream', 'live_stream_start', 'live_stream_posture',
+            'premium_stream', 'premium_stream_start', 'rules',
+            'dislikes', 'dislikes_delete', 'auto_messages', 'tasks',
+            'translator', 'contract', 'social_media'
+        ]
+        
+        is_work_question = False
+        matched_work_category = None
+        
+        for category in work_categories:
+            if category in KNOWLEDGE_KEYWORDS:
+                keywords = KNOWLEDGE_KEYWORDS[category]
+                if any(keyword in q_lower for keyword in keywords):
+                    is_work_question = True
+                    matched_work_category = category
+                    break
+        
+        if is_work_question:
+            logger.warning(f"Work question from non-member detected: {matched_work_category}")
+            return {
+                'answer': get_not_in_groups_message(user_lang),
+                'confidence': 100,
+                'escalate': False
+            }
+    
+    # Проверки идут в порядке приоритета
+    
+    dislike_calc_answer = await check_dislike_calculation(question, user_lang)
+    if dislike_calc_answer:
+        logger.info(f"Dislike calculation for user {user_id}")
+        return {
+            'answer': dislike_calc_answer,
+            'confidence': 95,
+            'escalate': False
+        }
+    
+    direct_answer = await check_faq_direct_match(question, user_lang)
+    if direct_answer:
+        logger.info(f"Direct FAQ match for user {user_id}")
+        return {
+            'answer': direct_answer,
+            'confidence': 95,
+            'escalate': False
+        }
+    
+    history = await get_messages(user_id, limit=10)
+    contextual_answer = await is_contextual_question(question, history)
+    if contextual_answer:
+        logger.info(f"Contextual question detected for user {user_id}")
+        return {
+            'answer': contextual_answer,
+            'confidence': 92,
+            'escalate': False
+        }
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"AI attempt {attempt + 1}/{max_retries} for user {user_id}")
+            response = await get_ai_response(user_id, question, is_in_groups)
+            
+            if response['escalate']:
+                logger.info(f"AI escalated for user {user_id}")
+                return response
+            
+            if response['confidence'] > 0 and response.get('answer'):
+                logger.info(f"AI response successful for user {user_id}")
+                return response
+            
+            logger.warning(f"AI returned empty/invalid response for user {user_id}, attempt {attempt + 1}")
+            
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+                
+        except asyncio.TimeoutError:
+            logger.error(f"AI timeout for user {user_id}, attempt {attempt + 1}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
+            else:
+                return {
+                    'answer': '',
+                    'confidence': 0,
+                    'escalate': True
+                }
+        except Exception as e:
+            logger.error(f"AI error for user {user_id}, attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
+            else:
+                return {
+                    'answer': '',
+                    'confidence': 0,
+                    'escalate': True
+                }
+    
+    logger.warning(f"All AI attempts failed for user {user_id}, escalating")
+    return {
+        'answer': '',
+        'confidence': 0,
+        'escalate': True
+    }
+
+async def get_ai_response(user_id, question, is_in_groups=False):
+    user = await get_user(user_id)
+    user_lang = user['language'] if user and user['language'] else 'ru'
+    
+    if not user_lang or user_lang not in ['ru', 'uk', 'en']:
+        from utils.language_detector import detect_language
+        detected_lang = detect_language(question)
+        user_lang = detected_lang if detected_lang in ['ru', 'uk', 'en'] else 'ru'
+        logger.info(f"Language fallback for user {user_id}: detected {user_lang} from question")
+    
+    if await check_forbidden_topics(question):
+        logger.info(f"Forbidden topic for user {user_id}")
+        return {
+            'answer': UNIVERSAL_RESPONSE.get(user_lang, UNIVERSAL_RESPONSE['ru']),
+            'confidence': 100,
+            'escalate': False
+        }
+    
+    logger.info(f"Building context for user {user_id}")
+    context_prompt = await build_context_prompt(user_id, question, is_in_groups)
+    
+    try:
+        logger.info(f"Calling AI for user {user_id}")
+        
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                client.chat.completions.create,
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": context_prompt}
+                ]
+            ),
+            timeout=45.0
+        )
+        
+        if not response or not hasattr(response, 'choices') or not response.choices:
+            logger.warning(f"Empty AI response for user {user_id}")
+            return {
+                'answer': '',
+                'confidence': 0,
+                'escalate': True
+            }
+        
+        content = response.choices[0].message.content
+        content = content.strip() if hasattr(content, 'strip') else str(content).strip()
+        
+        if is_g4f_error(content):
+            logger.warning(f"g4f error detected for user {user_id}: {content[:100]}")
+            return {
+                'answer': '',
+                'confidence': 0,
+                'escalate': True
+            }
+        
+        if content.startswith('```json'):
+            content = content[7:-3].strip()
+        elif content.startswith('```'):
+            content = content[3:-3].strip()
+        
+        content = content.replace('**', '').replace('__', '').replace('*', '').replace('_', '')
+        
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError:
+            logger.info(f"Non-JSON response for user {user_id}, using as plain text")
+            
+            if len(content) > 4000:
+                content = content[:3800] + "\n\n(продолжение в следующем сообщении...)"
+            
+            return {
+                'answer': content,
+                'confidence': 75,
+                'escalate': False
+            }
+        
+        if not isinstance(result, dict):
+            answer_text = str(result)
+            if len(answer_text) > 4000:
+                answer_text = answer_text[:3800] + "\n\n(продолжение в следующем сообщении...)"
+            
+            return {
+                'answer': answer_text,
+                'confidence': 75,
+                'escalate': False
+            }
+        
+        if 'answer' not in result:
+            result['answer'] = content
+        if 'confidence' not in result:
+            result['confidence'] = 70
+        if 'escalate' not in result:
+            result['escalate'] = result['confidence'] < AI_CONFIDENCE_THRESHOLD
+        
+        if is_g4f_error(str(result.get('answer', ''))):
+            logger.warning(f"g4f error in parsed answer for user {user_id}")
+            return {
+                'answer': '',
+                'confidence': 0,
+                'escalate': True
+            }
+        
+        if len(str(result.get('answer', ''))) > 4000:
+            result['answer'] = str(result['answer'])[:3800] + "\n\n(продолжение в следующем сообщении...)"
+        
+        result['answer'] = str(result['answer']).replace('**', '').replace('__', '').replace('*', '').replace('_', '')
+        
+        logger.info(f"AI response for {user_id}: conf={result['confidence']}, esc={result['escalate']}")
+        
+        return result
+        
+    except asyncio.TimeoutError:
+        logger.error(f"AI timeout for {user_id}")
+        raise
+    except Exception as e:
+        logger.error(f"AI error for {user_id}: {e}")
+        raise
